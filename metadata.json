@@ -1,0 +1,6 @@
+{
+  "name": "Babbling Book",
+  "description": "An intuitive web application to design and export custom comic book style speech bubbles for your stories. Users can customize text, fonts, bubble shapes, colors, and effects, then export their creations as high-quality SVG or PNG files.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
