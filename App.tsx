@@ -293,8 +293,8 @@ const App: React.FC = () => {
       const svgPreviewWidth = 500;
       const svgPreviewHeight = 350;
   
-      // Use Math.max for 'slice' behavior (cover), vs Math.min for 'meet' (contain)
-      const scale = Math.max(svgPreviewWidth / imageWidth, svgPreviewHeight / imageHeight);
+      // Use Math.min for 'meet' behavior (contain/fit), vs Math.max for 'slice' (cover/crop)
+      const scale = Math.min(svgPreviewWidth / imageWidth, svgPreviewHeight / imageHeight);
       const offsetXInPreview = (svgPreviewWidth - (imageWidth * scale)) / 2;
       const offsetYInPreview = (svgPreviewHeight - (imageHeight * scale)) / 2;
       

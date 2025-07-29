@@ -517,7 +517,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                 y="0"
                 width="500"
                 height="350"
-                preserveAspectRatio="xMidYMid slice"
+                preserveAspectRatio="xMidYMid meet"
             />
         )}
 
