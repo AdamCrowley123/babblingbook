@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import type { BubbleProps } from '../types';
-import { ShapeType } from '../types';
+import type { BubbleProps, TailProps } from '../types';
+import { ShapeType, TailType } from '../types';
 import { FONT_FAMILIES, SHAPE_OPTIONS, BORDER_STYLE_OPTIONS, TEXT_ALIGN_OPTIONS } from '../constants';
 import UploadIcon from './icons/UploadIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -19,6 +19,7 @@ interface ControlPanelProps {
   onAddBubble: () => void;
   onDeleteBubble: () => void;
   bubbleCount: number;
+  nextTailId: React.MutableRefObject<number>;
 }
 
 const Section: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
@@ -190,8 +191,42 @@ const Slider: React.FC<{ label: string; value: number; min: number; max: number;
     </div>
 );
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onClearImage, hasImage, onAddBubble, onDeleteBubble, bubbleCount }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onClearImage, hasImage, onAddBubble, onDeleteBubble, bubbleCount, nextTailId }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
+  
+    const handleAddTail = () => {
+        const baseTail = bubbleProps.tails[bubbleProps.tails.length - 1] || {
+            p1: { x: bubbleProps.x - 25, y: bubbleProps.y + bubbleProps.height / 2 },
+            p2: { x: bubbleProps.x + 25, y: bubbleProps.y + bubbleProps.height / 2 },
+            p3: { x: bubbleProps.x, y: bubbleProps.y + bubbleProps.height / 2 + 50 },
+            type: TailType.CURVED,
+            bend: 0,
+            zigs: 7,
+        };
+        const newTail: TailProps = {
+            id: nextTailId.current++,
+            type: baseTail.type,
+            // Deep copy position properties to prevent sharing object references
+            p1: { ...baseTail.p1 },
+            p2: { ...baseTail.p2 },
+            // Offset the new tail's tip to make it visible
+            p3: { x: baseTail.p3.x + 15, y: baseTail.p3.y - 15 },
+            bend: baseTail.bend,
+            zigs: baseTail.zigs,
+        };
+        onUpdate({ tails: [...bubbleProps.tails, newTail] });
+    };
+
+    const handleDeleteTail = (tailId: number) => {
+        onUpdate({ tails: bubbleProps.tails.filter(t => t.id !== tailId) });
+    };
+
+    const handleUpdateTail = (tailId: number, updates: Partial<Omit<TailProps, 'id'>>) => {
+        const newTails = bubbleProps.tails.map(t =>
+            t.id === tailId ? { ...t, ...updates } : t
+        );
+        onUpdate({ tails: newTails });
+    };
 
   return (
     <div className="bg-gray-900 h-full flex flex-col">
@@ -290,6 +325,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                                     {SHAPE_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
                                 </select>
                             </div>
+                            {bubbleProps.shape === ShapeType.SHOUT && (
+                                <Slider label="Spikes" value={bubbleProps.shoutSpikes} min={4} max={40} onChange={(v) => onUpdate({ shoutSpikes: v })} unit="" />
+                            )}
+                            {bubbleProps.shape === ShapeType.THOUGHT && (
+                                <Slider label="Puffs" value={bubbleProps.thoughtPuffs} min={5} max={25} onChange={(v) => onUpdate({ thoughtPuffs: v })} unit="" />
+                            )}
                             <ColorInput label="Fill Color" value={bubbleProps.fillColor} onChange={(v) => onUpdate({ fillColor: v })} />
                             <ColorInput label="Border Color" value={bubbleProps.borderColor} onChange={(v) => onUpdate({ borderColor: v })} />
                             <Slider label="Border Width" value={bubbleProps.borderWidth} min={0} max={20} onChange={(v) => onUpdate({ borderWidth: v })} />
@@ -325,10 +366,45 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                                 </button>
                                 </div>
                             </div>
-                            <Toggle label="Show Tail" checked={bubbleProps.tailVisible} onChange={(v) => onUpdate({ tailVisible: v })} />
-                            {bubbleProps.tailVisible && bubbleProps.shape !== ShapeType.THOUGHT && (
-                                <Slider label="Tail Bend" value={bubbleProps.tailBend} min={-1} max={1} step={0.05} onChange={(v) => onUpdate({ tailBend: v })} unit="" />
+                            <Toggle label="Show Tails" checked={bubbleProps.tailVisible} onChange={(v) => onUpdate({ tailVisible: v })} />
+                            
+                            {bubbleProps.tailVisible && (
+                                <div className="space-y-4 pt-3 border-t border-gray-700">
+                                    {bubbleProps.tails.map((tail, index) => (
+                                    <div key={tail.id} className="p-3 bg-gray-800 rounded-lg space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="font-semibold text-gray-300">Tail {index + 1}</h4>
+                                            <button
+                                                onClick={() => handleDeleteTail(tail.id)}
+                                                className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900 rounded-md transition-colors"
+                                                title="Delete Tail"
+                                            >
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        <div>
+                                            <Label htmlFor={`tail-type-${tail.id}`}>Tail Type</Label>
+                                            <select id={`tail-type-${tail.id}`} value={tail.type} onChange={e => handleUpdateTail(tail.id, { type: e.target.value as TailType })} className="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+                                                <option value={TailType.CURVED}>Curved</option>
+                                                <option value={TailType.LIGHTNING}>Lightning</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {tail.type === TailType.CURVED && (
+                                        <Slider label="Bend" value={tail.bend} min={-1} max={1} step={0.05} onChange={v => handleUpdateTail(tail.id, { bend: v })} unit="" />
+                                        )}
+                                        {tail.type === TailType.LIGHTNING && (
+                                        <Slider label="Zigs" value={tail.zigs} min={2} max={15} onChange={v => handleUpdateTail(tail.id, { zigs: v })} unit="" />
+                                        )}
+                                    </div>
+                                    ))}
+                                    <button onClick={handleAddTail} className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors">
+                                        <AddIcon className="w-5 h-5" />
+                                        <span>Add Tail</span>
+                                    </button>
+                                </div>
                             )}
+
                             <div className="text-xs text-gray-400 mt-2 space-y-1">
                                 <p>Move the bubble using its red center handle.</p>
                                 <p>Drag the square handles to resize.</p>

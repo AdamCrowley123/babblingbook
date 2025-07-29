@@ -19,9 +19,24 @@ export enum TextAlign {
   RIGHT = 'right',
 }
 
+export enum TailType {
+  CURVED = 'curved',
+  LIGHTNING = 'lightning',
+}
+
 export interface TailPosition {
   x: number;
   y: number;
+}
+
+export interface TailProps {
+  id: number;
+  type: TailType;
+  p1: TailPosition;
+  p2: TailPosition;
+  p3: TailPosition;
+  bend: number; // For CURVED
+  zigs: number; // For LIGHTNING
 }
 
 export interface BubbleProps {
@@ -37,10 +52,7 @@ export interface BubbleProps {
   borderColor: string;
   borderWidth: number;
   borderStyle: BorderStyle;
-  tailP1: TailPosition;
-  tailP2: TailPosition;
-  tailP3: TailPosition;
-  tailBend: number;
+  tails: TailProps[];
   width: number;
   height: number;
   x: number;
@@ -61,4 +73,6 @@ export interface BubbleProps {
   bubbleShadowBlur: number;
   bubbleShadowOffsetX: number;
   bubbleShadowOffsetY: number;
+  shoutSpikes: number;
+  thoughtPuffs: number;
 }

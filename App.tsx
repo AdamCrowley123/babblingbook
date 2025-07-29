@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { BubbleProps } from './types';
-import { ShapeType, BorderStyle, TextAlign } from './types';
+import type { BubbleProps, TailProps } from './types';
+import { ShapeType, BorderStyle, TextAlign, TailType } from './types';
 import { FONT_FAMILIES } from './constants';
 import ControlPanel from './components/ControlPanel';
 import BubblePreview from './components/BubblePreview';
@@ -20,10 +20,15 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   borderColor: '#000000',
   borderWidth: 4,
   borderStyle: BorderStyle.SOLID,
-  tailP1: { x: 225, y: 285 },
-  tailP2: { x: 275, y: 285 },
-  tailP3: { x: 250, y: 340 },
-  tailBend: 0,
+  tails: [{
+    id: 1,
+    type: TailType.CURVED,
+    p1: { x: 225, y: 285 },
+    p2: { x: 275, y: 285 },
+    p3: { x: 250, y: 340 },
+    bend: 0,
+    zigs: 7,
+  }],
   width: 400,
   height: 250,
   x: 250,
@@ -44,21 +49,21 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   bubbleShadowBlur: 5,
   bubbleShadowOffsetX: 3,
   bubbleShadowOffsetY: 3,
+  shoutSpikes: 12,
+  thoughtPuffs: 8,
 };
 
 const App: React.FC = () => {
   const [bubbles, setBubbles] = useState<BubbleProps[]>([{ ...INITIAL_PROPS, id: 1 }]);
   const [activeBubbleId, setActiveBubbleId] = useState<number>(1);
   const nextId = useRef(2);
+  const nextTailId = useRef(2);
 
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [imageDimensions, setImageDimensions] = useState<{ width: number, height: number } | null>(null);
   const backgroundImageRef = useRef<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // This is the bubble currently being edited.
-  // It falls back to the first bubble if the active one isn't found
-  // (e.g., during a deletion state transition), preventing crashes.
   const bubbleForPanel = bubbles.find(b => b.id === activeBubbleId) || bubbles[0];
 
   const handleUpdate = useCallback((updates: Partial<BubbleProps>) => {
@@ -71,14 +76,23 @@ const App: React.FC = () => {
     const currentActiveBubble = bubbles.find(b => b.id === activeBubbleId);
     if (!currentActiveBubble) return;
 
+    const newTails: TailProps[] = currentActiveBubble.tails.map(tail => {
+        const newTailId = nextTailId.current++;
+        return {
+          ...tail,
+          id: newTailId,
+          p1: { x: tail.p1.x + 30, y: tail.p1.y + 30 },
+          p2: { x: tail.p2.x + 30, y: tail.p2.y + 30 },
+          p3: { x: tail.p3.x + 30, y: tail.p3.y + 30 },
+        };
+    });
+
     const newBubble: BubbleProps = {
       ...currentActiveBubble,
       id: nextId.current,
       x: currentActiveBubble.x + 30,
       y: currentActiveBubble.y + 30,
-      tailP1: { x: currentActiveBubble.tailP1.x + 30, y: currentActiveBubble.tailP1.y + 30 },
-      tailP2: { x: currentActiveBubble.tailP2.x + 30, y: currentActiveBubble.tailP2.y + 30 },
-      tailP3: { x: currentActiveBubble.tailP3.x + 30, y: currentActiveBubble.tailP3.y + 30 },
+      tails: newTails,
     };
     
     setBubbles(prev => [...prev, newBubble]);
@@ -116,6 +130,7 @@ const App: React.FC = () => {
     setBubbles([{ ...INITIAL_PROPS, id: 1 }]);
     setActiveBubbleId(1);
     nextId.current = 2;
+    nextTailId.current = 2;
     handleClearImage();
   };
 
@@ -293,7 +308,6 @@ const App: React.FC = () => {
       const svgPreviewWidth = 500;
       const svgPreviewHeight = 350;
   
-      // Use Math.min for 'meet' behavior (contain/fit), vs Math.max for 'slice' (cover/crop)
       const scale = Math.min(svgPreviewWidth / imageWidth, svgPreviewHeight / imageHeight);
       const offsetXInPreview = (svgPreviewWidth - (imageWidth * scale)) / 2;
       const offsetYInPreview = (svgPreviewHeight - (imageHeight * scale)) / 2;
@@ -303,8 +317,6 @@ const App: React.FC = () => {
       const finalTranslateY = -offsetYInPreview;
       
       const g = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'g');
-      // The transform maps coordinates from the preview SVG to the final image coordinates.
-      // It must first translate to account for the preview offset, then scale up.
       g.setAttribute('transform', `scale(${finalScale}) translate(${finalTranslateX} ${finalTranslateY})`);
   
       const visualElements = Array.from(svgNode.children).filter(
@@ -386,6 +398,7 @@ const App: React.FC = () => {
                 onAddBubble={handleAddBubble}
                 onDeleteBubble={handleDeleteBubble}
                 bubbleCount={bubbles.length}
+                nextTailId={nextTailId}
             />
          ) : (
             <div className="p-6 text-gray-400 flex items-center justify-center h-full">
