@@ -293,7 +293,8 @@ const App: React.FC = () => {
       const svgPreviewWidth = 500;
       const svgPreviewHeight = 350;
   
-      const scale = Math.min(svgPreviewWidth / imageWidth, svgPreviewHeight / imageHeight);
+      // Use Math.max for 'slice' behavior (cover), vs Math.min for 'meet' (contain)
+      const scale = Math.max(svgPreviewWidth / imageWidth, svgPreviewHeight / imageHeight);
       const offsetXInPreview = (svgPreviewWidth - (imageWidth * scale)) / 2;
       const offsetYInPreview = (svgPreviewHeight - (imageHeight * scale)) / 2;
       
@@ -302,6 +303,8 @@ const App: React.FC = () => {
       const finalTranslateY = -offsetYInPreview;
       
       const g = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'g');
+      // The transform maps coordinates from the preview SVG to the final image coordinates.
+      // It must first translate to account for the preview offset, then scale up.
       g.setAttribute('transform', `scale(${finalScale}) translate(${finalTranslateX} ${finalTranslateY})`);
   
       const visualElements = Array.from(svgNode.children).filter(
@@ -367,12 +370,12 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-800 text-white font-sans">
+    <div className="flex flex-col md:flex-row h-full bg-gray-800 text-white font-sans">
       <header className="md:hidden p-4 bg-gray-900 border-b border-gray-700 flex justify-between items-center">
         <h1 className="text-2xl" style={{fontFamily: 'Bangers, cursive'}}>Babbling Book</h1>
       </header>
       
-      <aside className="w-full md:w-96 lg:w-[450px] flex-shrink-0 bg-gray-900 h-auto md:h-screen flex flex-col">
+      <aside className="w-full md:w-96 lg:w-[450px] flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
          {bubbleForPanel ? (
             <ControlPanel 
                 bubbleProps={bubbleForPanel} 

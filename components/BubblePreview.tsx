@@ -487,7 +487,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         onDragOver={handleDragOver}
         onDrop={handleDrop}
     >
-      <svg ref={svgRef} viewBox="0 0 500 350" xmlns="http://www.w3.org/2000/svg">
+      <svg ref={svgRef} viewBox="0 0 500 350" xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full">
         <defs>
           {bubbles.map(bubble => (
             <React.Fragment key={`defs-${bubble.id}`}>
@@ -517,7 +517,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                 y="0"
                 width="500"
                 height="350"
-                preserveAspectRatio="xMidYMid meet"
+                preserveAspectRatio="xMidYMid slice"
             />
         )}
 
