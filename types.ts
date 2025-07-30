@@ -40,6 +40,13 @@ export interface TailProps {
   zigs: number; // For LIGHTNING
 }
 
+export interface BackgroundFilters {
+  contrast: number;
+  brightness: number;
+  saturate: number;
+  temperature: number;
+}
+
 export interface BubbleProps {
   id: number;
   text: string;

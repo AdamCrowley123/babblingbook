@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { BubbleProps, TailProps } from '../types';
+import type { BubbleProps, TailProps, BackgroundFilters } from '../types';
 import { ShapeType, TailType } from '../types';
 import { FONT_FAMILIES, SHAPE_OPTIONS, BORDER_STYLE_OPTIONS, TEXT_ALIGN_OPTIONS } from '../constants';
 import UploadIcon from './icons/UploadIcon';
@@ -23,6 +23,10 @@ interface ControlPanelProps {
   onDeleteBubble: () => void;
   bubbleCount: number;
   nextTailId: React.MutableRefObject<number>;
+  backgroundFilters: BackgroundFilters;
+  onUpdateFilters: (updates: Partial<BackgroundFilters>) => void;
+  showExportFrame: boolean;
+  onSetShowExportFrame: (value: boolean) => void;
 }
 
 const Section: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
@@ -218,9 +222,37 @@ const ShapeIcon: React.FC<{shape: ShapeType}> = ({shape}) => {
     }
 }
 
+const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width="24" 
+    height="24" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="m6 9 6 6 6-6"/>
+  </svg>
+);
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId }) => {
+const CompactSlider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = '%' }) => (
+    <div>
+      <div className="flex justify-between items-baseline mb-1">
+        <label htmlFor={`compact-slider-${label}`} className="text-xs font-medium text-gray-300">{label}</label>
+        <span className="text-xs font-mono text-gray-400">{value}{unit}</span>
+      </div>
+      <input id={`compact-slider-${label}`} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(step === 1 ? parseInt(e.target.value) : parseFloat(e.target.value))} className="w-full mt-0 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+    </div>
+);
+
+
+const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId, backgroundFilters, onUpdateFilters, showExportFrame, onSetShowExportFrame }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
+  const [isEffectsExpanded, setIsEffectsExpanded] = useState(true);
   
     const handleAddTail = () => {
         const baseTail = bubbleProps.tails[bubbleProps.tails.length - 1] || {
@@ -290,7 +322,40 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                         </button>
                     )}
                 </div>
+                {hasBackground && (
+                    <div className="mt-4 pt-4 border-t border-gray-700">
+                        <Toggle label="Show Export Frame" checked={showExportFrame} onChange={onSetShowExportFrame} />
+                    </div>
+                )}
             </Section>
+            {hasBackground && (
+                <div className="mt-4">
+                    <h3 
+                        className="text-md font-bold text-gray-200 mb-3 border-b border-gray-700 pb-2 flex justify-between items-center cursor-pointer select-none"
+                        onClick={() => setIsEffectsExpanded(!isEffectsExpanded)}
+                    >
+                        <span>Background Effects</span>
+                        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transform transition-transform duration-200 ${isEffectsExpanded ? '' : '-rotate-90'}`} />
+                    </h3>
+                    {isEffectsExpanded && (
+                        <div className="pt-2 animate-fade-in-down">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                <CompactSlider label="Brightness" value={backgroundFilters.brightness} min={0} max={200} onChange={(v) => onUpdateFilters({ brightness: v })} />
+                                <CompactSlider label="Contrast" value={backgroundFilters.contrast} min={0} max={200} onChange={(v) => onUpdateFilters({ contrast: v })} />
+                                <CompactSlider label="Saturation" value={backgroundFilters.saturate} min={0} max={200} onChange={(v) => onUpdateFilters({ saturate: v })} />
+                                <CompactSlider label="Temperature" value={backgroundFilters.temperature} min={-100} max={100} onChange={(v) => onUpdateFilters({ temperature: v })} unit="" />
+                            </div>
+                            <button
+                                onClick={() => onUpdateFilters({ brightness: 100, contrast: 100, saturate: 100, temperature: 0 })}
+                                className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors text-sm"
+                            >
+                                <ResetIcon className="w-4 h-4" />
+                                <span>Reset Filters</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
        </div>
        
        <div className="flex-grow flex flex-col overflow-hidden">

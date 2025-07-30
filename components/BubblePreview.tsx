@@ -1,7 +1,8 @@
 
+
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ShapeType, BorderStyle, TailType } from '../types';
-import type { BubbleProps, TailPosition, TailProps } from '../types';
+import type { BubbleProps, TailPosition, TailProps, BackgroundFilters } from '../types';
 import UploadIcon from './icons/UploadIcon';
 
 //#region Path Utilities
@@ -125,6 +126,9 @@ interface BubblePreviewProps {
   setViewBox: (viewBox: string) => void;
   minViewBoxWidth: number;
   maxViewBoxWidth: number;
+  backgroundFilters: BackgroundFilters;
+  showExportFrame: boolean;
+  canvasDimensions: { width: number; height: number };
 }
 
 const DraggableHandle: React.FC<{
@@ -311,7 +315,7 @@ const getBorderStyleArray = (style: BorderStyle, width: number) => {
 
 const getThoughtTailPoints = (tail: TailProps) => {
     const points = [];
-    const numBubbles = 5;
+    const numBubbles = 7; // Increased number of bubbles for a fuller look.
     for (let i = 0; i < numBubbles; i++) {
         const t = i / (numBubbles - 1);
         const {p1, p2, p3} = tail;
@@ -424,21 +428,33 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
               })}
 
               {/* Thought tails are self-contained and render correctly on top */}
-              {tailVisible && shape === ShapeType.THOUGHT && tails.map(tail => (
-                  <g key={tail.id}>
-                      {getThoughtTailPoints(tail).map((p, i) => (
-                          <circle
-                              key={i}
-                              cx={p.x}
-                              cy={p.y}
-                              r={15 * ((i + 1) / 6)}
-                              fill={fillColor}
-                              stroke={borderColor}
-                              strokeWidth={borderWidth / 2}
-                          />
-                      ))}
-                  </g>
-              ))}
+              {tailVisible && shape === ShapeType.THOUGHT && tails.map(tail => {
+                  const tailStrokeWidth = borderWidth / 2;
+                  const tailBorderDashArray = getBorderStyleArray(bubble.borderStyle, tailStrokeWidth);
+
+                  return (
+                    <g key={tail.id}>
+                        {getThoughtTailPoints(tail).map((p, i, arr) => {
+                          // Make the base size larger by reducing the divisor.
+                          const dynamicBaseRadius = Math.min(bubble.width, bubble.height) / 12.0;
+                          // Use a non-linear scale to make the smaller bubbles at the tail's tip more visible.
+                          const scale = 0.4 + 0.6 * (i / (arr.length - 1));
+                          return (
+                            <circle
+                                key={i}
+                                cx={p.x}
+                                cy={p.y}
+                                r={dynamicBaseRadius * scale}
+                                fill={fillColor}
+                                stroke={borderColor}
+                                strokeWidth={tailStrokeWidth}
+                                strokeDasharray={tailBorderDashArray}
+                            />
+                          );
+                        })}
+                    </g>
+                  );
+              })}
           </g>
         )}
 
@@ -511,7 +527,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
   );
 });
 
-const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, backgroundVideo, videoRef, onFileDrop, onVideoFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth }) => {
+const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, backgroundVideo, videoRef, onFileDrop, onVideoFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth, backgroundFilters, showExportFrame, canvasDimensions }) => {
   const [draggingTailHandle, setDraggingTailHandle] = useState<{ id: number; handle: 'p1' | 'p2' | 'p3' } | null>(null);
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
@@ -843,6 +859,21 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
     window.removeEventListener('mouseup', handlePanMouseUp);
   };
   
+  const { contrast, brightness, saturate, temperature } = backgroundFilters;
+
+  const tempValue = temperature / 100; // range -1 to 1
+  const tempR = 1 + 0.15 * tempValue;
+  const tempB = 1 - 0.15 * tempValue;
+  const tempMatrix = `${tempR} 0 0 0 0 0 1 0 0 0 0 0 ${tempB} 0 0 0 0 0 1 0`;
+
+  const filterString = [
+    `brightness(${brightness}%)`,
+    `contrast(${contrast}%)`,
+    `saturate(${saturate}%)`,
+    temperature !== 0 ? 'url(#background-temperature)' : '',
+  ].filter(Boolean).join(' ');
+
+
   return (
     <div 
         ref={containerRef} 
@@ -879,6 +910,11 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
               )}
             </React.Fragment>
           ))}
+          {temperature !== 0 && (
+            <filter id="background-temperature">
+              <feColorMatrix type="matrix" values={tempMatrix} />
+            </filter>
+          )}
         </defs>
         
         {backgroundImage && !backgroundVideo && (
@@ -887,14 +923,15 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                 href={backgroundImage}
                 x="0"
                 y="0"
-                width="500"
-                height="350"
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
                 preserveAspectRatio="xMidYMid meet"
+                style={{ filter: filterString }}
             />
         )}
         
         {backgroundVideo && (
-            <foreignObject id="background-video-container" x="0" y="0" width="500" height="350">
+            <foreignObject id="background-video-container" x="0" y="0" width={canvasDimensions.width} height={canvasDimensions.height} style={{ filter: filterString }}>
                 <video 
                     ref={videoRef}
                     src={backgroundVideo}
@@ -904,7 +941,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                 />
             </foreignObject>
         )}
-        
+
         {isDrawing && currentDrawingPoints.length > 1 && (
             <path
               d={`M ${currentDrawingPoints.map(p => `${p.x} ${p.y}`).join(' L ')}`}
@@ -926,6 +963,21 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
               onInteractionStart={handleInteractionStart}
             />
         ))}
+        
+        {(backgroundImage || backgroundVideo) && showExportFrame && (
+            <rect
+                id="export-frame-guide"
+                x="0"
+                y="0"
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
+                fill="none"
+                stroke="#ff0000"
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+                style={{ pointerEvents: 'none' }}
+            />
+        )}
       </svg>
       {isDraggingOver && (
         <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center border-4 border-dashed border-gray-400 rounded-lg pointer-events-none z-10 transition-opacity">

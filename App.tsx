@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { BubbleProps, TailProps } from './types';
+import type { BubbleProps, TailProps, BackgroundFilters } from './types';
 import { ShapeType, BorderStyle, TextAlign, TailType } from './types';
 import { FONT_FAMILIES } from './constants';
 import ControlPanel from './components/ControlPanel';
@@ -13,13 +13,11 @@ import ArrowIcon from './components/icons/ArrowIcon';
 import Dropdown from './components/Dropdown';
 import VideoIcon from './components/icons/VideoIcon';
 
-const INITIAL_VIEWBOX_WIDTH = 500;
-const INITIAL_VIEWBOX_HEIGHT = 350;
+const INITIAL_CANVAS_DIMENSIONS = { width: 500, height: 350 };
 
 const MIN_ZOOM_PERCENT = 10;
 const MAX_ZOOM_PERCENT = 500;
-const MIN_VIEWBOX_WIDTH = INITIAL_VIEWBOX_WIDTH * (100 / MAX_ZOOM_PERCENT);
-const MAX_VIEWBOX_WIDTH = INITIAL_VIEWBOX_WIDTH * (100 / MIN_ZOOM_PERCENT);
+
 
 // Path simplification utility, moved here to be used in handleUpdate
 function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
@@ -133,6 +131,13 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   isDrawingEnabled: false,
 };
 
+const INITIAL_FILTERS: BackgroundFilters = {
+  contrast: 100,
+  brightness: 100,
+  saturate: 100,
+  temperature: 0,
+};
+
 const App: React.FC = () => {
   const [bubbles, setBubbles] = useState<BubbleProps[]>([{ ...INITIAL_PROPS, id: 1 }]);
   const [activeBubbleId, setActiveBubbleId] = useState<number>(1);
@@ -143,13 +148,16 @@ const App: React.FC = () => {
   const [backgroundVideo, setBackgroundVideo] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState<number>(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
+  const [backgroundFilters, setBackgroundFilters] = useState<BackgroundFilters>(INITIAL_FILTERS);
+  const [showExportFrame, setShowExportFrame] = useState<boolean>(true);
+  const [exportFilename, setExportFilename] = useState<string>('comic-scene');
 
-  const [imageDimensions, setImageDimensions] = useState<{ width: number, height: number } | null>(null);
+  const [canvasDimensions, setCanvasDimensions] = useState(INITIAL_CANVAS_DIMENSIONS);
   const backgroundUrlRef = useRef<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   
-  const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
+  const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_CANVAS_DIMENSIONS.width} ${INITIAL_CANVAS_DIMENSIONS.height}`);
 
   const bubbleForPanel = bubbles.find(b => b.id === activeBubbleId) || bubbles[0];
 
@@ -205,6 +213,10 @@ const App: React.FC = () => {
     );
   }, [activeBubbleId]);
   
+    const handleUpdateFilters = useCallback((updates: Partial<BackgroundFilters>) => {
+        setBackgroundFilters(prev => ({ ...prev, ...updates }));
+    }, []);
+
   const handleAddBubble = () => {
     const currentActiveBubble = bubbles.find(b => b.id === activeBubbleId);
     if (!currentActiveBubble) return;
@@ -250,16 +262,22 @@ const App: React.FC = () => {
     setActiveBubbleId(id);
   };
 
+  const handleResetView = useCallback(() => {
+    setViewBox(`0 0 ${canvasDimensions.width} ${canvasDimensions.height}`);
+  }, [canvasDimensions]);
+
   const handleClearBackground = useCallback(() => {
     if (backgroundUrlRef.current) {
       URL.revokeObjectURL(backgroundUrlRef.current);
     }
     setBackgroundImage(null);
     setBackgroundVideo(null);
-    setImageDimensions(null);
+    setCanvasDimensions(INITIAL_CANVAS_DIMENSIONS);
+    setViewBox(`0 0 ${INITIAL_CANVAS_DIMENSIONS.width} ${INITIAL_CANVAS_DIMENSIONS.height}`);
     setVideoDuration(0);
     setVideoCurrentTime(0);
     backgroundUrlRef.current = null;
+    setBackgroundFilters(INITIAL_FILTERS);
   }, []);
   
   const handleReset = () => {
@@ -267,8 +285,8 @@ const App: React.FC = () => {
     setActiveBubbleId(1);
     nextId.current = 2;
     nextTailId.current = 2;
-    handleResetView();
-    handleClearBackground();
+    handleClearBackground(); // This will reset view and dimensions
+    setShowExportFrame(true);
   };
 
   const handleFileSelect = useCallback((file: File) => {
@@ -282,7 +300,9 @@ const App: React.FC = () => {
 
     const img = new Image();
     img.onload = () => {
-      setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+      const newDims = { width: img.naturalWidth, height: img.naturalHeight };
+      setCanvasDimensions(newDims);
+      setViewBox(`0 0 ${newDims.width} ${newDims.height}`);
       setBackgroundImage(newUrl);
       backgroundUrlRef.current = newUrl;
     };
@@ -305,7 +325,9 @@ const App: React.FC = () => {
     const video = document.createElement('video');
     
     video.onloadedmetadata = () => {
-      setImageDimensions({ width: video.videoWidth, height: video.videoHeight });
+      const newDims = { width: video.videoWidth, height: video.videoHeight };
+      setCanvasDimensions(newDims);
+      setViewBox(`0 0 ${newDims.width} ${newDims.height}`);
       setVideoDuration(video.duration);
       setBackgroundVideo(newUrl);
       backgroundUrlRef.current = newUrl;
@@ -361,13 +383,16 @@ const App: React.FC = () => {
     
     // Remove interactive/temporary elements
     svgNode.querySelectorAll('.drag-handles')?.forEach(el => el.remove());
+    svgNode.querySelector('#export-frame-guide')?.remove();
     
     // Always remove background elements. 
     // - For transparent PNG export, they are not needed.
     // - For scene export, they are drawn separately on the canvas.
     svgNode.querySelector('#background-image')?.remove();
     svgNode.querySelector('#background-video-container')?.remove();
-    
+    svgNode.querySelector('#background-sharpen')?.remove();
+    svgNode.querySelector('#background-temperature')?.remove();
+
     const uniqueFonts = [...new Set(bubbles.map(b => b.fontFamily))];
     
     const foreignObjects = svgNode.querySelectorAll('foreignObject');
@@ -436,13 +461,13 @@ const App: React.FC = () => {
     const parser = new DOMParser();
     const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
     const svgNode = svgDoc.documentElement;
-    svgNode.setAttribute('viewBox', `0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
+    svgNode.setAttribute('viewBox', `0 0 ${canvasDimensions.width} ${canvasDimensions.height}`);
     const finalSvgData = new XMLSerializer().serializeToString(svgNode);
 
     const canvas = document.createElement('canvas');
     const scaleFactor = 3;
-    canvas.width = INITIAL_VIEWBOX_WIDTH * scaleFactor;
-    canvas.height = INITIAL_VIEWBOX_HEIGHT * scaleFactor;
+    canvas.width = canvasDimensions.width * scaleFactor;
+    canvas.height = canvasDimensions.height * scaleFactor;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -459,16 +484,14 @@ const App: React.FC = () => {
         // Draw image on transparent canvas
         ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/png');
-        triggerDownload(dataUrl, `speech-bubbles.png`);
+        triggerDownload(dataUrl, `${exportFilename || 'speech-bubbles'}.png`);
     } catch (error) {
         console.error(`Failed to load SVG for bubble export as PNG`, error);
         alert(`Sorry, there was an error exporting the bubble. ${error instanceof Error ? error.message : ''}`);
     }
   };
 
-  const getTransformedSvgStringForScene = useCallback(async (
-    localImageDimensions: { width: number; height: number; }
-  ): Promise<string> => {
+  const getTransformedSvgStringForScene = useCallback(async (): Promise<string> => {
       const baseSvgString = await getCleanSvgString();
       if (!baseSvgString) return '';
   
@@ -480,9 +503,8 @@ const App: React.FC = () => {
           return '';
       }
   
-      const { width: imageWidth, height: imageHeight } = localImageDimensions;
-      const svgPreviewWidth = 500;
-      const svgPreviewHeight = 350;
+      const { width: imageWidth, height: imageHeight } = canvasDimensions;
+      const { width: svgPreviewWidth, height: svgPreviewHeight } = canvasDimensions;
   
       const scale = Math.min(svgPreviewWidth / imageWidth, svgPreviewHeight / imageHeight);
       const offsetXInPreview = (svgPreviewWidth - (imageWidth * scale)) / 2;
@@ -507,24 +529,43 @@ const App: React.FC = () => {
       svgNode.setAttribute('viewBox', `0 0 ${imageWidth} ${imageHeight}`);
       
       return new XMLSerializer().serializeToString(svgNode);
-  }, [getCleanSvgString]);
+  }, [getCleanSvgString, canvasDimensions]);
 
   const exportSceneAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
     const hasBackground = backgroundImage || backgroundVideo;
-    if (!hasBackground || !imageDimensions) {
+    if (!hasBackground) {
       alert("Please upload a background image or video first.");
       return;
     }
 
-    const { width: imageWidth, height: imageHeight } = imageDimensions;
+    const { width: imageWidth, height: imageHeight } = canvasDimensions;
     const canvas = document.createElement('canvas');
     canvas.width = imageWidth;
     canvas.height = imageHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Apply filters directly to the canvas context
+    const { contrast, brightness, saturate, temperature } = backgroundFilters;
+    const tempValue = temperature / 100;
+    const rTemp = 1 + 0.15 * tempValue;
+    const bTemp = 1 - 0.15 * tempValue;
+    const tempMatrix = `${rTemp} 0 0 0 0 0 1 0 0 0 0 0 ${bTemp} 0 0 0 0 0 1 0`;
+    
+    // Note: SVG filters like convolve (sharpness) and colormatrix (temperature)
+    // are not directly available on 2D canvas context. We will apply what we can.
+    // For a full solution, one would need to draw to a temporary canvas, apply pixel-by-pixel effects,
+    // or draw the background into an intermediate SVG with filters applied.
+    // Here, we apply the CSS-compatible filters. Sharpness and Temperature will be ignored in the export.
+    ctx.filter = [
+        `brightness(${brightness}%)`,
+        `contrast(${contrast}%)`,
+        `saturate(${saturate}%)`,
+    ].join(' ');
+
+
     // Prepare SVG overlay first
-    const svgData = await getTransformedSvgStringForScene(imageDimensions);
+    const svgData = await getTransformedSvgStringForScene();
     if (!svgData) {
       alert("Failed to prepare the speech bubble for export.");
       return;
@@ -551,6 +592,9 @@ const App: React.FC = () => {
             });
             ctx.drawImage(bgImg, 0, 0, imageWidth, imageHeight);
         }
+        
+        // Reset filter before drawing SVG overlay so it's not affected
+        ctx.filter = 'none';
 
         // Draw SVG overlay on top
         await svgPromise;
@@ -558,12 +602,15 @@ const App: React.FC = () => {
 
         const mimeType = `image/${format}`;
         const dataUrl = canvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
-        triggerDownload(dataUrl, `comic-scene.${format}`);
+        triggerDownload(dataUrl, `${exportFilename || 'comic-scene'}.${format}`);
     } catch (error) {
       console.error("Failed to load media for scene export", error);
       alert(`Sorry, there was an error exporting the scene. ${error instanceof Error ? error.message : ''}`);
     }
   };
+  
+  const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
+  const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
 
   const handleZoom = (factor: number) => {
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
@@ -593,10 +640,8 @@ const App: React.FC = () => {
     setViewBox(`${newX} ${newY} ${w} ${h}`);
   };
   
-  const handleResetView = () => setViewBox(`0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
-  
   const currentViewBoxWidth = parseFloat(viewBox.split(' ')[2]);
-  const zoomPercentage = Math.round((INITIAL_VIEWBOX_WIDTH / currentViewBoxWidth) * 100);
+  const zoomPercentage = Math.round((canvasDimensions.width / currentViewBoxWidth) * 100);
 
   const isAtMaxZoom = currentViewBoxWidth <= MIN_VIEWBOX_WIDTH;
   const isAtMinZoom = currentViewBoxWidth >= MAX_VIEWBOX_WIDTH;
@@ -625,6 +670,10 @@ const App: React.FC = () => {
                 onDeleteBubble={handleDeleteBubble}
                 bubbleCount={bubbles.length}
                 nextTailId={nextTailId}
+                backgroundFilters={backgroundFilters}
+                onUpdateFilters={handleUpdateFilters}
+                showExportFrame={showExportFrame}
+                onSetShowExportFrame={setShowExportFrame}
             />
          ) : (
             <div className="p-6 text-gray-400 flex items-center justify-center h-full">
@@ -639,7 +688,19 @@ const App: React.FC = () => {
             <img src="/logo.png" alt="Babbling Book Logo" className="h-10 mr-3" />
             <span>Babbling Book</span>
           </h1>
-          <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-2 justify-end">
+             <div className="flex-grow sm:flex-grow-0">
+                <label htmlFor="filename-input" className="sr-only">File Name</label>
+                <input
+                    id="filename-input"
+                    type="text"
+                    value={exportFilename}
+                    onChange={(e) => setExportFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                    placeholder="File Name"
+                    className="w-full sm:w-40 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder-gray-400"
+                    title="Set the name for exported files"
+                />
+            </div>
             <button
               onClick={handleReset}
               className="flex items-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors"
@@ -694,6 +755,9 @@ const App: React.FC = () => {
               setViewBox={setViewBox}
               minViewBoxWidth={MIN_VIEWBOX_WIDTH}
               maxViewBoxWidth={MAX_VIEWBOX_WIDTH}
+              backgroundFilters={backgroundFilters}
+              showExportFrame={showExportFrame}
+              canvasDimensions={canvasDimensions}
           />
            <div className="absolute bottom-4 right-4 bg-gray-900 bg-opacity-80 rounded-lg p-1 flex flex-col items-center space-y-1 shadow-lg">
                 <div className="flex space-x-1">
