@@ -7,6 +7,19 @@ import ControlPanel from './components/ControlPanel';
 import BubblePreview from './components/BubblePreview';
 import DownloadIcon from './components/icons/DownloadIcon';
 import ResetIcon from './components/icons/ResetIcon';
+import ZoomInIcon from './components/icons/ZoomInIcon';
+import ZoomOutIcon from './components/icons/ZoomOutIcon';
+import FitToScreenIcon from './components/icons/FitToScreenIcon';
+import ArrowIcon from './components/icons/ArrowIcon';
+import Dropdown from './components/Dropdown';
+
+const INITIAL_VIEWBOX_WIDTH = 500;
+const INITIAL_VIEWBOX_HEIGHT = 350;
+
+const MIN_ZOOM_PERCENT = 10;
+const MAX_ZOOM_PERCENT = 500;
+const MIN_VIEWBOX_WIDTH = INITIAL_VIEWBOX_WIDTH * (100 / MAX_ZOOM_PERCENT);
+const MAX_VIEWBOX_WIDTH = INITIAL_VIEWBOX_WIDTH * (100 / MIN_ZOOM_PERCENT);
 
 const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   text: 'Type <b>something</b> <i>here!</i>',
@@ -63,6 +76,8 @@ const App: React.FC = () => {
   const [imageDimensions, setImageDimensions] = useState<{ width: number, height: number } | null>(null);
   const backgroundImageRef = useRef<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  
+  const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
 
   const bubbleForPanel = bubbles.find(b => b.id === activeBubbleId) || bubbles[0];
 
@@ -131,6 +146,7 @@ const App: React.FC = () => {
     setActiveBubbleId(1);
     nextId.current = 2;
     nextTailId.current = 2;
+    handleResetView();
     handleClearImage();
   };
 
@@ -191,6 +207,8 @@ const App: React.FC = () => {
     
     if (isForSceneExport) {
       svgNode.querySelector('#background-image')?.remove();
+    } else {
+      svgNode.setAttribute('viewBox', `0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
     }
     
     const uniqueFonts = [...new Set(bubbles.map(b => b.fontFamily))];
@@ -258,16 +276,14 @@ const App: React.FC = () => {
     triggerDownload(url, 'speech-bubbles.svg');
   };
 
-  const handleExportBubblePNG = async () => {
+  const exportBubblesAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
     const svgData = await getCleanSvgString();
     if (!svgData) return;
 
     const canvas = document.createElement('canvas');
-    const svgSize = svgRef.current!.viewBox.baseVal;
-    
     const scaleFactor = 3;
-    canvas.width = svgSize.width * scaleFactor;
-    canvas.height = svgSize.height * scaleFactor;
+    canvas.width = INITIAL_VIEWBOX_WIDTH * scaleFactor;
+    canvas.height = INITIAL_VIEWBOX_HEIGHT * scaleFactor;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -281,11 +297,16 @@ const App: React.FC = () => {
 
     try {
         await svgPromise;
+        if (format === 'jpeg' || format === 'webp') {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
         ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
-        const pngUrl = canvas.toDataURL('image/png');
-        triggerDownload(pngUrl, 'speech-bubbles.png');
+        const mimeType = `image/${format}`;
+        const dataUrl = canvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
+        triggerDownload(dataUrl, `speech-bubbles.${format}`);
     } catch (error) {
-        console.error("Failed to load SVG for bubble export", error);
+        console.error(`Failed to load SVG for bubble export as ${format}`, error);
         alert(`Sorry, there was an error exporting the bubble. ${error instanceof Error ? error.message : ''}`);
     }
   };
@@ -333,7 +354,7 @@ const App: React.FC = () => {
       return new XMLSerializer().serializeToString(svgNode);
   }, [getCleanSvgString]);
 
-  const handleExportScenePNG = async () => {
+  const exportSceneAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
     if (!backgroundImage || !imageDimensions) {
       alert("Please upload a background image first.");
       return;
@@ -350,6 +371,7 @@ const App: React.FC = () => {
     const bgPromise = new Promise<void>((resolve, reject) => {
       bgImg.onload = () => resolve();
       bgImg.onerror = () => reject(new Error('Failed to load background image for export.'));
+      bgImg.crossOrigin = "anonymous"; // Needed for tainted canvas
       bgImg.src = backgroundImage;
     });
 
@@ -373,18 +395,58 @@ const App: React.FC = () => {
       await svgPromise;
       ctx.drawImage(svgImg, 0, 0, imageWidth, imageHeight);
 
-      const pngUrl = canvas.toDataURL('image/png');
-      triggerDownload(pngUrl, 'comic-scene.png');
+      const mimeType = `image/${format}`;
+      const dataUrl = canvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
+      triggerDownload(dataUrl, `comic-scene.${format}`);
     } catch (error) {
       console.error("Failed to load images for scene export", error);
       alert(`Sorry, there was an error exporting the scene. ${error instanceof Error ? error.message : ''}`);
     }
   };
 
+  const handleZoom = (factor: number) => {
+    const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
+    let newW = w * factor;
+
+    // Clamp width to zoom limits
+    newW = Math.max(MIN_VIEWBOX_WIDTH, Math.min(newW, MAX_VIEWBOX_WIDTH));
+    
+    const aspectRatio = h / w;
+    const newH = newW * aspectRatio;
+
+    const newX = x + (w - newW) / 2;
+    const newY = y + (h - newH) / 2;
+    setViewBox(`${newX} ${newY} ${newW} ${newH}`);
+  };
+
+  const handlePan = (direction: 'up' | 'down' | 'left' | 'right') => {
+    const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
+    const panAmount = w * 0.1; // Pan by 10% of the current view width
+    let newX = x, newY = y;
+    switch (direction) {
+      case 'up': newY -= panAmount; break;
+      case 'down': newY += panAmount; break;
+      case 'left': newX -= panAmount; break;
+      case 'right': newX += panAmount; break;
+    }
+    setViewBox(`${newX} ${newY} ${w} ${h}`);
+  };
+  
+  const handleResetView = () => setViewBox(`0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
+  
+  const currentViewBoxWidth = parseFloat(viewBox.split(' ')[2]);
+  const zoomPercentage = Math.round((INITIAL_VIEWBOX_WIDTH / currentViewBoxWidth) * 100);
+
+  const isAtMaxZoom = currentViewBoxWidth <= MIN_VIEWBOX_WIDTH;
+  const isAtMinZoom = currentViewBoxWidth >= MAX_VIEWBOX_WIDTH;
+
   return (
     <div className="flex flex-col md:flex-row h-full bg-gray-800 text-white font-sans">
       <header className="md:hidden p-4 bg-gray-900 border-b border-gray-700 flex justify-between items-center">
-        <h1 className="text-2xl" style={{fontFamily: 'Bangers, cursive'}}>Babbling Book</h1>
+        <h1 className="text-2xl flex items-center" style={{fontFamily: 'Bangers, cursive'}}>
+          <img src="/logo.png" alt="Babbling Book Logo" className="h-8 mr-2" />
+          <span>Babbling Book</span>
+        </h1>
       </header>
       
       <aside className="w-full md:w-96 lg:w-[450px] flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
@@ -409,8 +471,9 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col p-4 md:p-8 overflow-hidden">
         <div className="flex-shrink-0 flex justify-between items-center mb-4">
-          <h1 className="hidden md:block text-4xl text-white" style={{fontFamily: 'Bangers, cursive'}}>
-            Babbling Book
+          <h1 className="hidden md:flex items-center text-4xl text-white" style={{fontFamily: 'Bangers, cursive'}}>
+            <img src="/logo.png" alt="Babbling Book Logo" className="h-10 mr-3" />
+            <span>Babbling Book</span>
           </h1>
           <div className="flex items-center space-x-2 flex-wrap gap-y-2">
             <button
@@ -421,34 +484,42 @@ const App: React.FC = () => {
               <ResetIcon className="w-5 h-5" />
               <span className="hidden sm:inline">Reset</span>
             </button>
-            <button
-              onClick={handleExportSVG}
-              className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors"
-              title="Export bubble(s) as SVG"
-            >
-              <DownloadIcon className="w-5 h-5"/>
-              <span className="hidden sm:inline">SVG</span>
-            </button>
-            <button
-              onClick={handleExportBubblePNG}
-              className="flex items-center space-x-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-md transition-colors"
-              title="Export bubble(s) as PNG (transparent)"
-            >
-              <DownloadIcon className="w-5 h-5"/>
-              <span className="hidden sm:inline">Bubbles</span>
-            </button>
-            <button
-              onClick={handleExportScenePNG}
-              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
-              disabled={!backgroundImage}
-              title={!backgroundImage ? "Upload a background to export the scene" : "Export scene as PNG"}
-            >
-              <DownloadIcon className="w-5 h-5"/>
-              <span className="hidden sm:inline">Scene</span>
-            </button>
+            
+            <Dropdown
+                trigger={
+                    <button className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors w-full sm:w-auto justify-center">
+                        <DownloadIcon className="w-5 h-5"/>
+                        <span className="hidden sm:inline">Export Bubbles</span>
+                    </button>
+                }
+                options={[
+                    { label: 'as SVG', onClick: handleExportSVG },
+                    { label: 'as PNG', onClick: () => exportBubblesAsRaster('png') },
+                    { label: 'as JPEG', onClick: () => exportBubblesAsRaster('jpeg') },
+                    { label: 'as WebP', onClick: () => exportBubblesAsRaster('webp') },
+                ]}
+            />
+            <Dropdown
+                disabled={!backgroundImage}
+                trigger={
+                    <button 
+                        className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed w-full sm:w-auto justify-center"
+                        disabled={!backgroundImage}
+                        title={!backgroundImage ? "Upload a background to export the scene" : "Export scene"}
+                    >
+                        <DownloadIcon className="w-5 h-5"/>
+                        <span className="hidden sm:inline">Export Scene</span>
+                    </button>
+                }
+                options={[
+                    { label: 'as PNG', onClick: () => exportSceneAsRaster('png') },
+                    { label: 'as JPEG', onClick: () => exportSceneAsRaster('jpeg') },
+                    { label: 'as WebP', onClick: () => exportSceneAsRaster('webp') },
+                ]}
+            />
           </div>
         </div>
-        <div className="flex-grow min-h-0">
+        <div className="flex-grow min-h-0 relative">
           <BubblePreview 
               svgRef={svgRef} 
               bubbles={bubbles} 
@@ -457,7 +528,32 @@ const App: React.FC = () => {
               onActivateBubble={handleActivateBubble}
               backgroundImage={backgroundImage}
               onFileDrop={handleFileSelect}
+              viewBox={viewBox}
+              setViewBox={setViewBox}
+              minViewBoxWidth={MIN_VIEWBOX_WIDTH}
+              maxViewBoxWidth={MAX_VIEWBOX_WIDTH}
           />
+           <div className="absolute bottom-4 right-4 bg-gray-900 bg-opacity-80 rounded-lg p-1 flex flex-col items-center space-y-1 shadow-lg">
+                <div className="flex space-x-1">
+                    <button onClick={() => handleZoom(0.8)} className="p-2 hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Zoom In" disabled={isAtMaxZoom}><ZoomInIcon className="w-5 h-5"/></button>
+                    <button onClick={() => handleZoom(1.25)} className="p-2 hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Zoom Out" disabled={isAtMinZoom}><ZoomOutIcon className="w-5 h-5"/></button>
+                    <button onClick={handleResetView} className="p-2 hover:bg-gray-700 rounded-md transition-colors" title="Fit to Screen"><FitToScreenIcon className="w-5 h-5"/></button>
+                </div>
+                <div className="text-xs text-center text-gray-400 font-mono select-none px-2">
+                  {zoomPercentage}%
+                </div>
+                <div className="grid grid-cols-3 gap-px w-full">
+                    <div></div>
+                    <button onClick={() => handlePan('up')} className="p-1 hover:bg-gray-700 rounded-md transition-colors flex justify-center" title="Pan Up"><ArrowIcon className="w-4 h-4"/></button>
+                    <div></div>
+                    <button onClick={() => handlePan('left')} className="p-1 hover:bg-gray-700 rounded-md transition-colors flex justify-center" title="Pan Left"><ArrowIcon className="w-4 h-4 transform -rotate-90"/></button>
+                    <div></div>
+                    <button onClick={() => handlePan('right')} className="p-1 hover:bg-gray-700 rounded-md transition-colors flex justify-center" title="Pan Right"><ArrowIcon className="w-4 h-4 transform rotate-90"/></button>
+                    <div></div>
+                    <button onClick={() => handlePan('down')} className="p-1 hover:bg-gray-700 rounded-md transition-colors flex justify-center" title="Pan Down"><ArrowIcon className="w-4 h-4 transform rotate-180"/></button>
+                    <div></div>
+                </div>
+            </div>
         </div>
       </main>
     </div>

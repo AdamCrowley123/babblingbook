@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ShapeType, BorderStyle, TailType } from '../types';
 import type { BubbleProps, TailPosition, TailProps } from '../types';
@@ -11,6 +12,10 @@ interface BubblePreviewProps {
   onActivateBubble: (id: number) => void;
   backgroundImage: string | null;
   onFileDrop: (file: File) => void;
+  viewBox: string;
+  setViewBox: (viewBox: string) => void;
+  minViewBoxWidth: number;
+  maxViewBoxWidth: number;
 }
 
 const DraggableHandle: React.FC<{
@@ -211,7 +216,7 @@ interface BubbleGraphicProps {
   onInteractionStart: (e: React.MouseEvent, type: 'tail' | 'bubble' | 'resize', payload: any) => void;
 }
 
-const BubbleGraphic: React.FC<BubbleGraphicProps> = ({ bubble, isActive, showHandles, onActivate, onInteractionStart }) => {
+const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActive, showHandles, onActivate, onInteractionStart }) => {
   const bubblePath = useMemo(() => getBubblePath(bubble), [bubble]);
   const { tailVisible, shape, fillColor, borderColor, borderWidth, bubbleShadow, id, tails } = bubble;
   
@@ -264,7 +269,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = ({ bubble, isActive, showHan
   return (
     <g transform={`rotate(${bubble.rotation} ${bubble.x} ${bubble.y})`}>
       <g
-        onMouseDown={() => { if (!isActive) onActivate(bubble.id); }}
+        onMouseDown={(e) => { if (e.button === 0 && !isActive) onActivate(bubble.id); }}
         style={{ fontFamily: bubble.fontFamily, cursor: isActive ? 'default' : 'pointer' }}
       >
         {bubble.bubbleVisible && (
@@ -374,9 +379,9 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = ({ bubble, isActive, showHan
       )}
     </g>
   );
-};
+});
 
-const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, onFileDrop }) => {
+const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, onFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth }) => {
   const [draggingTailHandle, setDraggingTailHandle] = useState<{ id: number; handle: 'p1' | 'p2' | 'p3' } | null>(null);
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
@@ -386,22 +391,25 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   const [initialBubbleState, setInitialBubbleState] = useState<BubbleProps | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
-  const isInteracting = !!draggingTailHandle || isDraggingBubble || !!resizeDirection;
-  
+  const isInteractingWithBubble = !!draggingTailHandle || isDraggingBubble || !!resizeDirection;
+  const panningState = useRef<{ startX: number; startY: number; viewBoxX: number; viewBoxY: number; } | null>(null);
+
   const activeBubble = useMemo(() => bubbles.find(b => b.id === activeBubbleId), [bubbles, activeBubbleId]);
 
   const getSvgCoordinates = useCallback((e: MouseEvent | React.MouseEvent): {x: number, y: number} => {
-    if (!containerRef.current) return {x: 0, y: 0};
-    const svgRect = containerRef.current.getBoundingClientRect();
-    const scaleX = 500 / svgRect.width;
-    const scaleY = 350 / svgRect.height;
-    return {
-        x: (e.clientX - svgRect.left) * scaleX,
-        y: (e.clientY - svgRect.top) * scaleY,
-    };
-  }, []);
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const CTM = svg.getScreenCTM();
+    if (!CTM) return { x: 0, y: 0 };
+    let pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    pt = pt.matrixTransform(CTM.inverse());
+    return { x: pt.x, y: pt.y };
+  }, [svgRef]);
   
   const handleInteractionStart = (e: React.MouseEvent, type: 'tail' | 'bubble' | 'resize', payload: any) => {
+    if (e.button !== 0) return; // Only allow left click for bubble interactions
     e.preventDefault();
     e.stopPropagation();
     if (!activeBubble) return;
@@ -416,7 +424,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isInteracting || !dragStart || !initialBubbleState) return;
+    if (!isInteractingWithBubble || !dragStart || !initialBubbleState) return;
     const currentPos = getSvgCoordinates(e);
     const dx = currentPos.x - dragStart.x;
     const dy = currentPos.y - dragStart.y;
@@ -502,7 +510,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
             })),
         });
     }
-  }, [isInteracting, dragStart, initialBubbleState, draggingTailHandle, isDraggingBubble, resizeDirection, getSvgCoordinates, onUpdate]);
+  }, [isInteractingWithBubble, dragStart, initialBubbleState, draggingTailHandle, isDraggingBubble, resizeDirection, getSvgCoordinates, onUpdate]);
   
   const handleMouseUp = useCallback(() => {
     setDraggingTailHandle(null);
@@ -513,7 +521,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   }, []);
 
   useEffect(() => {
-    if (isInteracting) {
+    if (isInteractingWithBubble) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('mouseleave', handleMouseUp);
@@ -523,9 +531,8 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('mouseleave', handleMouseUp);
     };
-  }, [isInteracting, handleMouseMove, handleMouseUp]);
+  }, [isInteractingWithBubble, handleMouseMove, handleMouseUp]);
 
-  // Safeguard effect to prevent crashes when deleting the bubble being interacted with.
   useEffect(() => {
     if (initialBubbleState) {
         const isInteractingBubbleStillPresent = bubbles.some(b => b.id === initialBubbleState.id);
@@ -536,36 +543,82 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   }, [bubbles, initialBubbleState, handleMouseUp]);
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingOver(true);
+    e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true);
   };
-
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.currentTarget.contains(e.relatedTarget as Node)) {
-        return;
-    }
+    e.preventDefault(); e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDraggingOver(false);
   };
-
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
   };
-
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingOver(false);
+    e.preventDefault(); e.stopPropagation(); setIsDraggingOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         onFileDrop(e.dataTransfer.files[0]);
         e.dataTransfer.clearData();
     }
   };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (isInteractingWithBubble) return;
+    e.preventDefault();
+    const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
+    const zoomFactor = e.deltaY < 0 ? 0.8 : 1.25;
+    const mousePos = getSvgCoordinates(e);
+
+    let newW = w * zoomFactor;
+
+    // Clamp width to zoom limits
+    newW = Math.max(minViewBoxWidth, Math.min(newW, maxViewBoxWidth));
+
+    const actualZoomFactor = newW / w;
+
+    const newH = h * actualZoomFactor;
+    const newX = mousePos.x - (mousePos.x - x) * actualZoomFactor;
+    const newY = mousePos.y - (mousePos.y - y) * actualZoomFactor;
+
+    setViewBox(`${newX} ${newY} ${newW} ${newH}`);
+  };
   
-  const showHandles = !draggingTailHandle && !isDraggingBubble;
+  const handlePanMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 1 || isInteractingWithBubble) return; // Middle mouse button
+    e.preventDefault();
+    const [viewBoxX, viewBoxY] = viewBox.split(' ').map(parseFloat);
+    panningState.current = { startX: e.clientX, startY: e.clientY, viewBoxX, viewBoxY };
+    if(containerRef.current) containerRef.current.style.cursor = 'grabbing';
+    window.addEventListener('mousemove', handlePanMouseMove);
+    window.addEventListener('mouseup', handlePanMouseUp);
+  };
+
+  const handlePanMouseMove = (e: MouseEvent) => {
+    if (!panningState.current) return;
+    e.preventDefault();
+    const [,, w] = viewBox.split(' ').map(parseFloat);
+    const svg = svgRef.current;
+    if (!svg) return;
+    
+    const clientWidth = svg.clientWidth;
+    const scale = w / clientWidth;
+
+    const dx = e.clientX - panningState.current.startX;
+    const dy = e.clientY - panningState.current.startY;
+    
+    const newViewBoxX = panningState.current.viewBoxX - dx * scale;
+    const newViewBoxY = panningState.current.viewBoxY - dy * scale;
+    setViewBox(`${newViewBoxX} ${newViewBoxY} ${viewBox.split(' ')[2]} ${viewBox.split(' ')[3]}`);
+  };
+
+  const handlePanMouseUp = (e: MouseEvent) => {
+    if (e.button !== 1) return;
+    panningState.current = null;
+    if(containerRef.current) containerRef.current.style.cursor = 'default';
+    window.removeEventListener('mousemove', handlePanMouseMove);
+    window.removeEventListener('mouseup', handlePanMouseUp);
+  };
+  
+  const showHandles = !isInteractingWithBubble && !panningState.current;
 
   return (
     <div 
@@ -575,8 +628,10 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
+        onWheel={handleWheel}
+        onMouseDown={handlePanMouseDown}
     >
-      <svg ref={svgRef} viewBox="0 0 500 350" xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full">
+      <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-gray-600">
         <defs>
           {bubbles.map(bubble => (
             <React.Fragment key={`defs-${bubble.id}`}>
