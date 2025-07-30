@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ShapeType, BorderStyle, TailType } from '../types';
 import type { BubbleProps, TailPosition, TailProps } from '../types';
@@ -11,7 +10,10 @@ interface BubblePreviewProps {
   onUpdate: (updates: Partial<BubbleProps>) => void;
   onActivateBubble: (id: number) => void;
   backgroundImage: string | null;
+  backgroundVideo: string | null;
+  videoRef: React.RefObject<HTMLVideoElement>;
   onFileDrop: (file: File) => void;
+  onVideoFileDrop: (file: File) => void;
   viewBox: string;
   setViewBox: (viewBox: string) => void;
   minViewBoxWidth: number;
@@ -381,7 +383,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
   );
 });
 
-const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, onFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth }) => {
+const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, backgroundVideo, videoRef, onFileDrop, onVideoFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth }) => {
   const [draggingTailHandle, setDraggingTailHandle] = useState<{ id: number; handle: 'p1' | 'p2' | 'p3' } | null>(null);
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
@@ -408,6 +410,12 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
     return { x: pt.x, y: pt.y };
   }, [svgRef]);
   
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+    }
+  }, [videoRef, backgroundVideo]);
+
   const handleInteractionStart = (e: React.MouseEvent, type: 'tail' | 'bubble' | 'resize', payload: any) => {
     if (e.button !== 0) return; // Only allow left click for bubble interactions
     e.preventDefault();
@@ -556,7 +564,12 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault(); e.stopPropagation(); setIsDraggingOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        onFileDrop(e.dataTransfer.files[0]);
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+            onFileDrop(file);
+        } else if (file.type.startsWith('video/')) {
+            onVideoFileDrop(file);
+        }
         e.dataTransfer.clearData();
     }
   };
@@ -653,7 +666,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
           ))}
         </defs>
         
-        {backgroundImage && (
+        {backgroundImage && !backgroundVideo && (
             <image
                 id="background-image"
                 href={backgroundImage}
@@ -663,6 +676,18 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                 height="350"
                 preserveAspectRatio="xMidYMid meet"
             />
+        )}
+        
+        {backgroundVideo && (
+            <foreignObject id="background-video-container" x="0" y="0" width="500" height="350">
+                <video 
+                    ref={videoRef}
+                    src={backgroundVideo}
+                    muted
+                    playsInline
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+            </foreignObject>
         )}
 
         {bubbles.map(bubble => (
@@ -679,7 +704,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
       {isDraggingOver && (
         <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center border-4 border-dashed border-gray-400 rounded-lg pointer-events-none z-10 transition-opacity">
             <UploadIcon className="w-16 h-16 text-white mb-4" />
-            <p className="text-white text-xl font-bold">Drop Image to Upload</p>
+            <p className="text-white text-xl font-bold">Drop Image or Video to Upload</p>
         </div>
       )}
     </div>

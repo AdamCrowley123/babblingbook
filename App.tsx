@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { BubbleProps, TailProps } from './types';
 import { ShapeType, BorderStyle, TextAlign, TailType } from './types';
@@ -12,6 +11,7 @@ import ZoomOutIcon from './components/icons/ZoomOutIcon';
 import FitToScreenIcon from './components/icons/FitToScreenIcon';
 import ArrowIcon from './components/icons/ArrowIcon';
 import Dropdown from './components/Dropdown';
+import VideoIcon from './components/icons/VideoIcon';
 
 const INITIAL_VIEWBOX_WIDTH = 500;
 const INITIAL_VIEWBOX_HEIGHT = 350;
@@ -73,9 +73,14 @@ const App: React.FC = () => {
   const nextTailId = useRef(2);
 
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [backgroundVideo, setBackgroundVideo] = useState<string | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
+
   const [imageDimensions, setImageDimensions] = useState<{ width: number, height: number } | null>(null);
-  const backgroundImageRef = useRef<string | null>(null);
+  const backgroundUrlRef = useRef<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   
   const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
 
@@ -132,13 +137,16 @@ const App: React.FC = () => {
     setActiveBubbleId(id);
   };
 
-  const handleClearImage = useCallback(() => {
-    if (backgroundImageRef.current) {
-      URL.revokeObjectURL(backgroundImageRef.current);
+  const handleClearBackground = useCallback(() => {
+    if (backgroundUrlRef.current) {
+      URL.revokeObjectURL(backgroundUrlRef.current);
     }
     setBackgroundImage(null);
+    setBackgroundVideo(null);
     setImageDimensions(null);
-    backgroundImageRef.current = null;
+    setVideoDuration(0);
+    setVideoCurrentTime(0);
+    backgroundUrlRef.current = null;
   }, []);
   
   const handleReset = () => {
@@ -147,7 +155,7 @@ const App: React.FC = () => {
     nextId.current = 2;
     nextTailId.current = 2;
     handleResetView();
-    handleClearImage();
+    handleClearBackground();
   };
 
   const handleFileSelect = useCallback((file: File) => {
@@ -155,7 +163,7 @@ const App: React.FC = () => {
         alert('Please select or drop a valid image file.');
         return;
     }
-    handleClearImage();
+    handleClearBackground();
     
     const newUrl = URL.createObjectURL(file);
 
@@ -163,7 +171,7 @@ const App: React.FC = () => {
     img.onload = () => {
       setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
       setBackgroundImage(newUrl);
-      backgroundImageRef.current = newUrl;
+      backgroundUrlRef.current = newUrl;
     };
     img.onerror = () => {
       console.error("Failed to load image");
@@ -171,20 +179,54 @@ const App: React.FC = () => {
       URL.revokeObjectURL(newUrl);
     }
     img.src = newUrl;
-  }, [handleClearImage]);
+  }, [handleClearBackground]);
+
+  const handleVideoSelect = useCallback((file: File) => {
+    if (!file || !file.type.startsWith('video/')) {
+      alert('Please select or drop a valid video file.');
+      return;
+    }
+    handleClearBackground();
+
+    const newUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    
+    video.onloadedmetadata = () => {
+      setImageDimensions({ width: video.videoWidth, height: video.videoHeight });
+      setVideoDuration(video.duration);
+      setBackgroundVideo(newUrl);
+      backgroundUrlRef.current = newUrl;
+    };
+     video.onerror = () => {
+      console.error("Failed to load video");
+      alert("Sorry, there was an error loading the video.");
+      URL.revokeObjectURL(newUrl);
+    }
+    video.src = newUrl;
+  }, [handleClearBackground]);
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files && e.target.files[0];
-    if (file) {
-      handleFileSelect(file);
-    }
+    if (file) handleFileSelect(file);
+    e.target.value = '';
+  };
+  
+  const handleVideoInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) handleVideoSelect(file);
     e.target.value = '';
   };
 
   useEffect(() => {
+    if (videoRef.current) {
+        videoRef.current.currentTime = videoCurrentTime;
+    }
+  }, [videoCurrentTime]);
+
+  useEffect(() => {
     return () => {
-      if (backgroundImageRef.current) {
-        URL.revokeObjectURL(backgroundImageRef.current);
+      if (backgroundUrlRef.current) {
+        URL.revokeObjectURL(backgroundUrlRef.current);
       }
     };
   }, []);
@@ -207,6 +249,8 @@ const App: React.FC = () => {
     
     if (isForSceneExport) {
       svgNode.querySelector('#background-image')?.remove();
+      // Also remove video for scene export as it will be drawn on canvas separately
+      svgNode.querySelector('#background-video-container')?.remove();
     } else {
       svgNode.setAttribute('viewBox', `0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
     }
@@ -215,6 +259,8 @@ const App: React.FC = () => {
     
     const foreignObjects = svgNode.querySelectorAll('foreignObject');
     foreignObjects.forEach((fo, index) => {
+        // In this app, only bubble text uses foreignObjects, so this is safe.
+        // If other foreignObjects are added, this query would need to be more specific.
         const bubble = bubbles[index];
         if (bubble) {
             const div = fo.querySelector('div');
@@ -312,7 +358,7 @@ const App: React.FC = () => {
   };
 
   const getTransformedSvgStringForScene = useCallback(async (
-    imageDimensions: { width: number; height: number; }
+    localImageDimensions: { width: number; height: number; }
   ): Promise<string> => {
       const baseSvgString = await getCleanSvgString(true);
       if (!baseSvgString) return '';
@@ -325,7 +371,7 @@ const App: React.FC = () => {
           return '';
       }
   
-      const { width: imageWidth, height: imageHeight } = imageDimensions;
+      const { width: imageWidth, height: imageHeight } = localImageDimensions;
       const svgPreviewWidth = 500;
       const svgPreviewHeight = 350;
   
@@ -355,8 +401,9 @@ const App: React.FC = () => {
   }, [getCleanSvgString]);
 
   const exportSceneAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
-    if (!backgroundImage || !imageDimensions) {
-      alert("Please upload a background image first.");
+    const hasBackground = backgroundImage || backgroundVideo;
+    if (!hasBackground || !imageDimensions) {
+      alert("Please upload a background image or video first.");
       return;
     }
 
@@ -367,14 +414,7 @@ const App: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const bgImg = new Image();
-    const bgPromise = new Promise<void>((resolve, reject) => {
-      bgImg.onload = () => resolve();
-      bgImg.onerror = () => reject(new Error('Failed to load background image for export.'));
-      bgImg.crossOrigin = "anonymous"; // Needed for tainted canvas
-      bgImg.src = backgroundImage;
-    });
-
+    // Prepare SVG overlay first
     const svgData = await getTransformedSvgStringForScene(imageDimensions);
     if (!svgData) {
       alert("Failed to prepare the speech bubble for export.");
@@ -389,17 +429,29 @@ const App: React.FC = () => {
     });
 
     try {
-      await bgPromise;
-      ctx.drawImage(bgImg, 0, 0, imageWidth, imageHeight);
-      
-      await svgPromise;
-      ctx.drawImage(svgImg, 0, 0, imageWidth, imageHeight);
+        // Draw background (image or video frame)
+        if (backgroundVideo && videoRef.current) {
+            ctx.drawImage(videoRef.current, 0, 0, imageWidth, imageHeight);
+        } else if (backgroundImage) {
+            const bgImg = new Image();
+            await new Promise<void>((resolve, reject) => {
+                bgImg.onload = () => resolve();
+                bgImg.onerror = () => reject(new Error('Failed to load background image for export.'));
+                bgImg.crossOrigin = "anonymous";
+                bgImg.src = backgroundImage;
+            });
+            ctx.drawImage(bgImg, 0, 0, imageWidth, imageHeight);
+        }
 
-      const mimeType = `image/${format}`;
-      const dataUrl = canvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
-      triggerDownload(dataUrl, `comic-scene.${format}`);
+        // Draw SVG overlay on top
+        await svgPromise;
+        ctx.drawImage(svgImg, 0, 0, imageWidth, imageHeight);
+
+        const mimeType = `image/${format}`;
+        const dataUrl = canvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
+        triggerDownload(dataUrl, `comic-scene.${format}`);
     } catch (error) {
-      console.error("Failed to load images for scene export", error);
+      console.error("Failed to load media for scene export", error);
       alert(`Sorry, there was an error exporting the scene. ${error instanceof Error ? error.message : ''}`);
     }
   };
@@ -409,7 +461,7 @@ const App: React.FC = () => {
     let newW = w * factor;
 
     // Clamp width to zoom limits
-    newW = Math.max(MIN_VIEWBOX_WIDTH, Math.min(newW, MAX_VIEWBOX_WIDTH));
+    newW = Math.max(MIN_VIEWBOX_WIDTH, Math.min(MAX_VIEWBOX_WIDTH, newW));
     
     const aspectRatio = h / w;
     const newH = newW * aspectRatio;
@@ -439,16 +491,13 @@ const App: React.FC = () => {
 
   const isAtMaxZoom = currentViewBoxWidth <= MIN_VIEWBOX_WIDTH;
   const isAtMinZoom = currentViewBoxWidth >= MAX_VIEWBOX_WIDTH;
+  const hasBackground = !!backgroundImage || !!backgroundVideo;
 
   return (
     <div className="flex flex-col md:flex-row h-full bg-gray-800 text-white font-sans">
       <header className="md:hidden p-4 bg-gray-900 border-b border-gray-700 flex justify-between items-center">
         <h1 className="text-2xl flex items-center" style={{fontFamily: 'Bangers, cursive'}}>
-        <img 
-  src="/logo.png" 
-  alt="Babbling Book Logo" 
-  className="h-16 w-16 mr-2 object-contain" 
-/>
+          <img src="/logo.png" alt="Babbling Book Logo" className="h-8 mr-2" />
           <span>Babbling Book</span>
         </h1>
       </header>
@@ -459,8 +508,10 @@ const App: React.FC = () => {
                 bubbleProps={bubbleForPanel} 
                 onUpdate={handleUpdate}
                 onImageUpload={handleFileInputChange}
-                onClearImage={handleClearImage}
+                onVideoUpload={handleVideoInputChange}
+                onClearBackground={handleClearBackground}
                 hasImage={!!backgroundImage}
+                hasVideo={!!backgroundVideo}
                 onAddBubble={handleAddBubble}
                 onDeleteBubble={handleDeleteBubble}
                 bubbleCount={bubbles.length}
@@ -504,12 +555,12 @@ const App: React.FC = () => {
                 ]}
             />
             <Dropdown
-                disabled={!backgroundImage}
+                disabled={!hasBackground}
                 trigger={
                     <button 
                         className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed w-full sm:w-auto justify-center"
-                        disabled={!backgroundImage}
-                        title={!backgroundImage ? "Upload a background to export the scene" : "Export scene"}
+                        disabled={!hasBackground}
+                        title={!hasBackground ? "Upload a background to export the scene" : "Export scene"}
                     >
                         <DownloadIcon className="w-5 h-5"/>
                         <span className="hidden sm:inline">Export Scene</span>
@@ -523,7 +574,7 @@ const App: React.FC = () => {
             />
           </div>
         </div>
-        <div className="flex-grow min-h-0 relative">
+        <div className="flex-grow min-h-0 relative flex flex-col">
           <BubblePreview 
               svgRef={svgRef} 
               bubbles={bubbles} 
@@ -531,7 +582,10 @@ const App: React.FC = () => {
               onUpdate={handleUpdate}
               onActivateBubble={handleActivateBubble}
               backgroundImage={backgroundImage}
+              backgroundVideo={backgroundVideo}
+              videoRef={videoRef}
               onFileDrop={handleFileSelect}
+              onVideoFileDrop={handleVideoSelect}
               viewBox={viewBox}
               setViewBox={setViewBox}
               minViewBoxWidth={MIN_VIEWBOX_WIDTH}
@@ -558,6 +612,25 @@ const App: React.FC = () => {
                     <div></div>
                 </div>
             </div>
+            {backgroundVideo && (
+                <div className="flex-shrink-0 pt-4 px-4 flex items-center justify-center space-x-4">
+                    <input
+                        type="range"
+                        min="0"
+                        max={videoDuration}
+                        step="0.01"
+                        value={videoCurrentTime}
+                        onChange={(e) => setVideoCurrentTime(parseFloat(e.target.value))}
+                        className="w-full md:w-1/2 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        title="Scrub video frame"
+                    />
+                    <span className="text-sm font-mono text-gray-400 whitespace-nowrap">
+                        {new Date(videoCurrentTime * 1000).toISOString().substr(14, 5)} / {new Date(videoDuration * 1000).toISOString().substr(14, 5)}
+                    </span>
+                </div>
+            )}
+        </div>
+        <div className="flex-shrink-0 flex justify-center items-center pt-2">
         </div>
       </main>
     </div>

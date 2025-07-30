@@ -12,6 +12,7 @@ export const FONT_FAMILIES = [
   'Yomogi',
   'Arial',
   'Verdana',
+  'MedievalSharp',
 ];
 
 export const SHAPE_OPTIONS = [

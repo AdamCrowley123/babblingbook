@@ -8,14 +8,17 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import EmojiIcon from './icons/EmojiIcon';
 import AddIcon from './icons/AddIcon';
 import ResetIcon from './icons/ResetIcon';
+import VideoIcon from './icons/VideoIcon';
 
 
 interface ControlPanelProps {
   bubbleProps: BubbleProps;
   onUpdate: (updates: Partial<BubbleProps>) => void;
   onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onClearImage: () => void;
+  onVideoUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onClearBackground: () => void;
   hasImage: boolean;
+  hasVideo: boolean;
   onAddBubble: () => void;
   onDeleteBubble: () => void;
   bubbleCount: number;
@@ -191,7 +194,7 @@ const Slider: React.FC<{ label: string; value: number; min: number; max: number;
     </div>
 );
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onClearImage, hasImage, onAddBubble, onDeleteBubble, bubbleCount, nextTailId }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
   
     const handleAddTail = () => {
@@ -227,7 +230,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
         );
         onUpdate({ tails: newTails });
     };
-
+    const hasBackground = hasImage || hasVideo;
   return (
     <div className="bg-gray-900 h-full flex flex-col">
        <div className="p-6 border-b border-gray-800">
@@ -244,13 +247,20 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                 </div>
                  <p className="text-xs text-gray-400 mt-2 text-center">Click a bubble in the preview to edit it.</p>
                 <div className="flex items-center space-x-2 pt-4 border-t border-gray-700 mt-4">
-                    <label htmlFor="image-upload" className="flex-1 cursor-pointer flex items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
+                    <label htmlFor="image-upload" className={`flex-1 cursor-pointer flex items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors ${hasVideo ? 'opacity-50 cursor-not-allowed' : ''}`} title={hasVideo ? "Clear video background to upload an image" : "Upload background image"}>
                         <UploadIcon className="w-5 h-5" />
-                        <span>BG Image</span>
+                        <span>Image</span>
                     </label>
-                    <input id="image-upload" type="file" accept="image/*" onChange={onImageUpload} className="hidden" />
-                    {hasImage && (
-                        <button onClick={onClearImage} className="p-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors" title="Clear background image">
+                    <input id="image-upload" type="file" accept="image/*" onChange={onImageUpload} className="hidden" disabled={hasVideo}/>
+
+                    <label htmlFor="video-upload" className={`flex-1 cursor-pointer flex items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors ${hasImage ? 'opacity-50 cursor-not-allowed' : ''}`} title={hasImage ? "Clear image background to upload a video" : "Upload background video"}>
+                        <VideoIcon className="w-5 h-5" />
+                        <span>Video</span>
+                    </label>
+                    <input id="video-upload" type="file" accept="video/*" onChange={onVideoUpload} className="hidden" disabled={hasImage}/>
+
+                    {hasBackground && (
+                        <button onClick={onClearBackground} className="p-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors" title="Clear background">
                         <TrashIcon className="w-5 h-5" />
                         </button>
                     )}
