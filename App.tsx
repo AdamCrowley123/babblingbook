@@ -21,6 +21,68 @@ const MAX_ZOOM_PERCENT = 500;
 const MIN_VIEWBOX_WIDTH = INITIAL_VIEWBOX_WIDTH * (100 / MAX_ZOOM_PERCENT);
 const MAX_VIEWBOX_WIDTH = INITIAL_VIEWBOX_WIDTH * (100 / MIN_ZOOM_PERCENT);
 
+// Path simplification utility, moved here to be used in handleUpdate
+function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
+    let x = p1.x;
+    let y = p1.y;
+    let dx = p2.x - x;
+    let dy = p2.y - y;
+    if (dx !== 0 || dy !== 0) {
+        const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+        if (t > 1) {
+            x = p2.x;
+            y = p2.y;
+        } else if (t > 0) {
+            x += dx * t;
+            y += dy * t;
+        }
+    }
+    dx = p.x - x;
+    dy = p.y - y;
+    return dx * dx + dy * dy;
+}
+function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
+    if (points.length < 2) return points;
+    let len = points.length;
+    let markers = new Uint8Array(len);
+    let first = 0;
+    let last = len - 1;
+    let stack: number[] = [];
+    let newPoints = [];
+    let i, maxSqDist, sqDist, index;
+
+    markers[first] = markers[last] = 1;
+
+    while (last) {
+        maxSqDist = 0;
+        index = 0;
+        for (i = first + 1; i < last; i++) {
+            sqDist = getSqSegDist(points[i], points[first], points[last]);
+            if (sqDist > maxSqDist) {
+                index = i;
+                maxSqDist = sqDist;
+            }
+        }
+        if (maxSqDist > sqTolerance) {
+            markers[index] = 1;
+            stack.push(first, index, index, last);
+        }
+        
+        const newLast = stack.pop();
+        const newFirst = stack.pop();
+        last = newLast !== undefined ? newLast : 0;
+        first = newFirst !== undefined ? newFirst : 0;
+    }
+
+    for (i = 0; i < len; i++) {
+        if (markers[i]) {
+            newPoints.push(points[i]);
+        }
+    }
+    return newPoints;
+}
+
+
 const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   text: 'Type <b>something</b> <i>here!</i>',
   fontFamily: 'Comic Neue',
@@ -64,6 +126,11 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   bubbleShadowOffsetY: 3,
   shoutSpikes: 12,
   thoughtPuffs: 8,
+  freehandRawPoints: [],
+  freehandPoints: [],
+  freehandSmoothness: 0.8,
+  freehandSimplification: 1.5,
+  isDrawingEnabled: false,
 };
 
 const App: React.FC = () => {
@@ -88,7 +155,53 @@ const App: React.FC = () => {
 
   const handleUpdate = useCallback((updates: Partial<BubbleProps>) => {
     setBubbles(prevBubbles =>
-        prevBubbles.map(b => (b.id === activeBubbleId ? { ...b, ...updates } : b))
+      prevBubbles.map(b => {
+        if (b.id !== activeBubbleId) return b;
+
+        const updatedBubble = { ...b, ...updates };
+
+        // Case 1: Switching to Freehand for the first time on a bubble. Enable drawing.
+        if (updates.shape === ShapeType.FREEHAND && (!b.freehandRawPoints || b.freehandRawPoints.length === 0)) {
+            updatedBubble.isDrawingEnabled = true;
+        }
+
+        // Case 2: Redraw button was clicked. `isDrawingEnabled` is set to true in the `updates` object.
+        // We just need to clear the points.
+        if (updates.isDrawingEnabled && updates.freehandRawPoints?.length === 0) {
+            updatedBubble.freehandPoints = [];
+            return updatedBubble; // Return early, no simplification needed.
+        }
+
+        const rawPoints = updatedBubble.freehandRawPoints;
+        const needsSimplification = (updates.freehandSimplification !== undefined || updates.freehandRawPoints !== undefined) && rawPoints && rawPoints.length > 0;
+
+        if (needsSimplification) {
+          const simplified = simplifyRDP(rawPoints, updatedBubble.freehandSimplification ?? 1.5);
+          updatedBubble.freehandPoints = simplified;
+
+          // Case 3: A new drawing was completed (`updates.freehandRawPoints` is present).
+          // Recalculate bounds and disable drawing mode.
+          if (updates.freehandRawPoints && simplified.length > 0) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const p of simplified) {
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x);
+                maxY = Math.max(maxY, p.y);
+            }
+            const width = maxX - minX;
+            const height = maxY - minY;
+
+            updatedBubble.width = Math.max(50, width);
+            updatedBubble.height = Math.max(50, height);
+            updatedBubble.x = minX + width / 2;
+            updatedBubble.y = minY + height / 2;
+            updatedBubble.isDrawingEnabled = false; // Disable drawing.
+          }
+        }
+        
+        return updatedBubble;
+      })
     );
   }, [activeBubbleId]);
   
@@ -241,19 +354,19 @@ const App: React.FC = () => {
       URL.revokeObjectURL(href);
   };
 
-  const getCleanSvgString = useCallback(async (isForSceneExport = false): Promise<string> => {
+  const getCleanSvgString = useCallback(async (): Promise<string> => {
     if (!svgRef.current) return '';
 
     const svgNode = svgRef.current.cloneNode(true) as SVGSVGElement;
+    
+    // Remove interactive/temporary elements
     svgNode.querySelectorAll('.drag-handles')?.forEach(el => el.remove());
     
-    if (isForSceneExport) {
-      svgNode.querySelector('#background-image')?.remove();
-      // Also remove video for scene export as it will be drawn on canvas separately
-      svgNode.querySelector('#background-video-container')?.remove();
-    } else {
-      svgNode.setAttribute('viewBox', `0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
-    }
+    // Always remove background elements. 
+    // - For transparent PNG export, they are not needed.
+    // - For scene export, they are drawn separately on the canvas.
+    svgNode.querySelector('#background-image')?.remove();
+    svgNode.querySelector('#background-video-container')?.remove();
     
     const uniqueFonts = [...new Set(bubbles.map(b => b.fontFamily))];
     
@@ -295,7 +408,7 @@ const App: React.FC = () => {
                 }
             });
 
-            for (const { originalUrl, dataUri } of await Promise.all(embeddedFontPromises)) {
+            for (const { originalUrl, dataUri } of await Promise.all(await Promise.all(embeddedFontPromises))) {
                 if (dataUri) cssText = cssText.replace(originalUrl, dataUri);
             }
             finalCss = cssText;
@@ -313,18 +426,18 @@ const App: React.FC = () => {
     return new XMLSerializer().serializeToString(svgNode);
   }, [bubbles]);
 
-  const handleExportSVG = async () => {
+
+  const handleExportBubblesPNG = async () => {
     const svgData = await getCleanSvgString();
     if (!svgData) return;
     
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-    triggerDownload(url, 'speech-bubbles.svg');
-  };
-
-  const exportBubblesAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
-    const svgData = await getCleanSvgString();
-    if (!svgData) return;
+    // Since getCleanSvgString doesn't set a viewBox, we parse and set it here
+    // to ensure the export is framed correctly.
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
+    const svgNode = svgDoc.documentElement;
+    svgNode.setAttribute('viewBox', `0 0 ${INITIAL_VIEWBOX_WIDTH} ${INITIAL_VIEWBOX_HEIGHT}`);
+    const finalSvgData = new XMLSerializer().serializeToString(svgNode);
 
     const canvas = document.createElement('canvas');
     const scaleFactor = 3;
@@ -338,21 +451,17 @@ const App: React.FC = () => {
     const svgPromise = new Promise<void>((resolve, reject) => {
         svgImg.onload = () => resolve();
         svgImg.onerror = () => reject(new Error('Failed to load bubble SVG for export.'));
-        svgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        svgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(finalSvgData)));
     });
 
     try {
         await svgPromise;
-        if (format === 'jpeg' || format === 'webp') {
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+        // Draw image on transparent canvas
         ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
-        const mimeType = `image/${format}`;
-        const dataUrl = canvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
-        triggerDownload(dataUrl, `speech-bubbles.${format}`);
+        const dataUrl = canvas.toDataURL('image/png');
+        triggerDownload(dataUrl, `speech-bubbles.png`);
     } catch (error) {
-        console.error(`Failed to load SVG for bubble export as ${format}`, error);
+        console.error(`Failed to load SVG for bubble export as PNG`, error);
         alert(`Sorry, there was an error exporting the bubble. ${error instanceof Error ? error.message : ''}`);
     }
   };
@@ -360,7 +469,7 @@ const App: React.FC = () => {
   const getTransformedSvgStringForScene = useCallback(async (
     localImageDimensions: { width: number; height: number; }
   ): Promise<string> => {
-      const baseSvgString = await getCleanSvgString(true);
+      const baseSvgString = await getCleanSvgString();
       if (!baseSvgString) return '';
   
       const parser = new DOMParser();
@@ -540,20 +649,15 @@ const App: React.FC = () => {
               <span className="hidden sm:inline">Reset</span>
             </button>
             
-            <Dropdown
-                trigger={
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors w-full sm:w-auto justify-center">
-                        <DownloadIcon className="w-5 h-5"/>
-                        <span className="hidden sm:inline">Export Bubbles</span>
-                    </button>
-                }
-                options={[
-                    { label: 'as SVG', onClick: handleExportSVG },
-                    { label: 'as PNG', onClick: () => exportBubblesAsRaster('png') },
-                    { label: 'as JPEG', onClick: () => exportBubblesAsRaster('jpeg') },
-                    { label: 'as WebP', onClick: () => exportBubblesAsRaster('webp') },
-                ]}
-            />
+            <button
+                onClick={handleExportBubblesPNG}
+                className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors w-full sm:w-auto justify-center"
+                title="Export bubbles only as a transparent PNG"
+            >
+                <DownloadIcon className="w-5 h-5"/>
+                <span className="hidden sm:inline">Export as PNG</span>
+            </button>
+
             <Dropdown
                 disabled={!hasBackground}
                 trigger={

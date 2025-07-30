@@ -194,6 +194,31 @@ const Slider: React.FC<{ label: string; value: number; min: number; max: number;
     </div>
 );
 
+const PencilIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    <path d="m15 5 4 4" />
+  </svg>
+);
+const OvalIcon = () => <svg viewBox="0 0 24 24" className="w-5 h-5 mx-auto mb-1"><ellipse cx="12" cy="12" rx="10" ry="7" fill="none" stroke="currentColor" strokeWidth="2" /></svg>;
+const RectRoundedIcon = () => <svg viewBox="0 0 24 24" className="w-5 h-5 mx-auto mb-1"><rect x="3" y="6" width="18" height="12" rx="4" fill="none" stroke="currentColor" strokeWidth="2" /></svg>;
+const RectSharpIcon = () => <svg viewBox="0 0 24 24" className="w-5 h-5 mx-auto mb-1"><rect x="3" y="6" width="18" height="12" fill="none" stroke="currentColor" strokeWidth="2" /></svg>;
+const ShoutIcon = () => <svg viewBox="0 0 24 24" className="w-5 h-5 mx-auto mb-1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M2.3 11.72a1 1 0 0 0 1.48-.44l2.42-6.04a1 1 0 0 1 1.7-.2l3.2 5.33a1 1 0 0 0 .8.43h5.24a1 1 0 0 0 .8-.43l3.2-5.33a1 1 0 0 1 1.7.2l2.42 6.04a1 1 0 0 0 1.48.44l.46-.18a1 1 0 0 0 .44-1.48l-2.42-6.04a3 3 0 0 0-5.1-.6L14.8 9.8a1 1 0 0 1-.8.43h-4a1 1 0 0 1-.8-.44l-3.2-5.33a3 3 0 0 0-5.1.6L2.73 10.1a1 1 0 0 0 .44 1.48l-.87.34z" /></svg>
+const ThoughtIcon = () => <svg viewBox="0 0 24 24" className="w-5 h-5 mx-auto mb-1" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21.5 12a9.5 9.5 0 1 1-17.4 5.5A9.5 9.5 0 0 1 12 2.5" /><path d="M6 18a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" /><path d="M4.5 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" /></svg>;
+
+const ShapeIcon: React.FC<{shape: ShapeType}> = ({shape}) => {
+    switch(shape){
+        case ShapeType.OVAL: return <OvalIcon />;
+        case ShapeType.RECTANGLE: return <RectRoundedIcon />;
+        case ShapeType.RECTANGLE_SHARP: return <RectSharpIcon />;
+        case ShapeType.SHOUT: return <ShoutIcon />;
+        case ShapeType.THOUGHT: return <ThoughtIcon />;
+        case ShapeType.FREEHAND: return <div className="w-5 h-5 mx-auto mb-1"><PencilIcon /></div>;
+        default: return null;
+    }
+}
+
+
 const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
   
@@ -330,16 +355,43 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                         <Section title="Shape & Style">
                              <Toggle label="Show Bubble" checked={bubbleProps.bubbleVisible} onChange={(v) => onUpdate({ bubbleVisible: v })} />
                              <div>
-                                <Label htmlFor="shape">Shape</Label>
-                                <select id="shape" value={bubbleProps.shape} onChange={(e) => onUpdate({ shape: e.target.value as any })} className="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
-                                    {SHAPE_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-                                </select>
+                                <Label>Shape</Label>
+                                <div className="grid grid-cols-3 gap-2 mt-1">
+                                    {SHAPE_OPTIONS.map(({ value, label }) => (
+                                        <button
+                                        key={value}
+                                        onClick={() => onUpdate({ shape: value })}
+                                        className={`p-2 rounded-md transition-colors text-center text-xs h-16 flex flex-col justify-center items-center ${
+                                            bubbleProps.shape === value
+                                            ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                                            : 'bg-gray-700 hover:bg-gray-600'
+                                        }`}
+                                        title={label}
+                                        >
+                                        <ShapeIcon shape={value} />
+                                        <span>{label.split(' ')[0]}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             {bubbleProps.shape === ShapeType.SHOUT && (
                                 <Slider label="Spikes" value={bubbleProps.shoutSpikes} min={4} max={40} onChange={(v) => onUpdate({ shoutSpikes: v })} unit="" />
                             )}
                             {bubbleProps.shape === ShapeType.THOUGHT && (
                                 <Slider label="Puffs" value={bubbleProps.thoughtPuffs} min={5} max={25} onChange={(v) => onUpdate({ thoughtPuffs: v })} unit="" />
+                            )}
+                             {bubbleProps.shape === ShapeType.FREEHAND && (
+                                <div className="space-y-3 p-3 bg-gray-800 rounded-lg">
+                                    <Slider label="Simplification" value={bubbleProps.freehandSimplification ?? 1.5} min={0.1} max={10} step={0.1} onChange={(v) => onUpdate({ freehandSimplification: v })} unit="" />
+                                    <Slider label="Smoothness" value={bubbleProps.freehandSmoothness ?? 0.8} min={0} max={1.5} step={0.1} onChange={(v) => onUpdate({ freehandSmoothness: v })} unit="" />
+                                    <button
+                                        onClick={() => onUpdate({ freehandPoints: [], freehandRawPoints: [], isDrawingEnabled: true })}
+                                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors text-sm"
+                                    >
+                                        <ResetIcon className="w-4 h-4" />
+                                        <span>Redraw Shape</span>
+                                    </button>
+                                </div>
                             )}
                             <ColorInput label="Fill Color" value={bubbleProps.fillColor} onChange={(v) => onUpdate({ fillColor: v })} />
                             <ColorInput label="Border Color" value={bubbleProps.borderColor} onChange={(v) => onUpdate({ borderColor: v })} />

@@ -12,7 +12,6 @@ export const FONT_FAMILIES = [
   'Yomogi',
   'Arial',
   'Verdana',
-  'MedievalSharp',
 ];
 
 export const SHAPE_OPTIONS = [
@@ -21,6 +20,7 @@ export const SHAPE_OPTIONS = [
   { value: ShapeType.RECTANGLE_SHARP, label: 'Rectangle (Sharp)' },
   { value: ShapeType.SHOUT, label: 'Shout' },
   { value: ShapeType.THOUGHT, label: 'Thought' },
+  { value: ShapeType.FREEHAND, label: 'Freehand' },
 ];
 
 export const BORDER_STYLE_OPTIONS = [

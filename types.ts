@@ -5,6 +5,7 @@ export enum ShapeType {
   RECTANGLE_SHARP = 'rectangle_sharp',
   SHOUT = 'shout',
   THOUGHT = 'thought',
+  FREEHAND = 'freehand',
 }
 
 export enum BorderStyle {
@@ -57,7 +58,6 @@ export interface BubbleProps {
   height: number;
   x: number;
   y: number;
-  tailVisible: boolean;
   rotation: number;
   bubbleVisible: boolean;
   textShadow: boolean;
@@ -75,4 +75,10 @@ export interface BubbleProps {
   bubbleShadowOffsetY: number;
   shoutSpikes: number;
   thoughtPuffs: number;
+  freehandRawPoints?: { x: number; y: number }[];
+  freehandPoints?: { x: number; y: number }[];
+  freehandSmoothness?: number;
+  freehandSimplification?: number;
+  isDrawingEnabled?: boolean;
+  tailVisible: boolean;
 }

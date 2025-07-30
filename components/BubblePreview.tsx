@@ -1,7 +1,114 @@
+
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ShapeType, BorderStyle, TailType } from '../types';
 import type { BubbleProps, TailPosition, TailProps } from '../types';
 import UploadIcon from './icons/UploadIcon';
+
+//#region Path Utilities
+// --- RDP (Ramer-Douglas-Peucker) algorithm for path simplification ---
+function getSqDist(p: {x:number, y:number}, p2: {x:number, y:number}) {
+    const dx = p.x - p2.x;
+    const dy = p.y - p2.y;
+    return dx * dx + dy * dy;
+}
+function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
+    let x = p1.x;
+    let y = p1.y;
+    let dx = p2.x - x;
+    let dy = p2.y - y;
+    if (dx !== 0 || dy !== 0) {
+        const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+        if (t > 1) {
+            x = p2.x;
+            y = p2.y;
+        } else if (t > 0) {
+            x += dx * t;
+            y += dy * t;
+        }
+    }
+    dx = p.x - x;
+    dy = p.y - y;
+    return dx * dx + dy * dy;
+}
+function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
+    if (points.length < 2) return points;
+    let len = points.length;
+    let markers = new Uint8Array(len);
+    let first = 0;
+    let last = len - 1;
+    let stack = [];
+    let newPoints = [];
+    let i, maxSqDist, sqDist, index;
+
+    markers[first] = markers[last] = 1;
+
+    while (last) {
+        maxSqDist = 0;
+        index = 0; // Initialize index
+        for (i = first + 1; i < last; i++) {
+            sqDist = getSqSegDist(points[i], points[first], points[last]);
+            if (sqDist > maxSqDist) {
+                index = i;
+                maxSqDist = sqDist;
+            }
+        }
+        if (maxSqDist > sqTolerance) {
+            markers[index] = 1;
+            stack.push(first, index, index, last);
+        }
+        const newLast = stack.pop();
+        const newFirst = stack.pop();
+        last = newLast !== undefined ? newLast : 0;
+        first = newFirst !== undefined ? newFirst : 0;
+    }
+
+    for (i = 0; i < len; i++) {
+        if (markers[i]) {
+            newPoints.push(points[i]);
+        }
+    }
+    return newPoints;
+}
+
+// --- Path smoothing using Catmull-Rom splines to generate SVG path data ---
+function getControlPoints(p0: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}, p3: {x:number, y:number}, tension: number) {
+    const t = tension;
+    const cp1 = {
+        x: p1.x + (p2.x - p0.x) / 6 * t,
+        y: p1.y + (p2.y - p0.y) / 6 * t
+    };
+    const cp2 = {
+        x: p2.x - (p3.x - p1.x) / 6 * t,
+        y: p2.y - (p3.y - p1.y) / 6 * t
+    };
+    return [cp1, cp2];
+}
+
+function createSmoothPath(points: {x:number, y:number}[], tension: number, closed = true) {
+    if (points.length < 2) return '';
+    if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+    
+    let path = `M ${points[0].x} ${points[0].y}`;
+    const p = [...points];
+
+    if (closed) {
+      p.unshift(points[points.length - 1]);
+      p.push(points[0], points[1]);
+    } else {
+      p.unshift(points[0]);
+      p.push(points[points.length-1]);
+    }
+    
+    for (let i = 1; i < p.length - 2; i++) {
+        const [cp1, cp2] = getControlPoints(p[i-1], p[i], p[i+1], p[i+2], tension);
+        path += ` C ${cp1.x},${cp1.y} ${cp2.x},${cp2.y} ${p[i+1].x},${p[i+1].y}`;
+    }
+
+    if (closed) path += ' Z';
+    
+    return path;
+}
+//#endregion
 
 interface BubblePreviewProps {
   bubbles: BubbleProps[];
@@ -131,7 +238,7 @@ const getLightningTailPath = (p1: TailPosition, p2: TailPosition, p3: TailPositi
 
 
 const getBubblePath = (bubbleProps: BubbleProps) => {
-    const { shape, width, height, borderWidth, x: bubbleX, y: bubbleY, shoutSpikes, thoughtPuffs } = bubbleProps;
+    const { shape, width, height, borderWidth, x: bubbleX, y: bubbleY, shoutSpikes, thoughtPuffs, freehandPoints, freehandSmoothness } = bubbleProps;
     const w = width - borderWidth * 2;
     const h = height - borderWidth * 2;
     const bubbleLeft = bubbleX - width / 2;
@@ -140,6 +247,11 @@ const getBubblePath = (bubbleProps: BubbleProps) => {
     const y = bubbleTop + borderWidth;
 
     switch (shape) {
+      case ShapeType.FREEHAND:
+        if (freehandPoints && freehandPoints.length > 1) {
+            return createSmoothPath(freehandPoints, freehandSmoothness ?? 0.8);
+        }
+        return '';
       case ShapeType.RECTANGLE:
         return `M${x + 20},${y} L${x + w - 20},${y} Q${x + w},${y} ${x + w},${y + 20} L${x + w},${y + h - 20} Q${x + w},${y + h} ${x + w - 20},${y + h} L${x + 20},${y + h} Q${x},${y + h} ${x},${y + h - 20} L${x},${y + 20} Q${x},${y} ${x + 20},${y} Z`;
       case ShapeType.RECTANGLE_SHARP:
@@ -268,68 +380,78 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
 
   const borderDashArray = getBorderStyleArray(bubble.borderStyle, borderWidth);
 
+  const isFreehandEmpty = bubble.shape === ShapeType.FREEHAND && (!bubble.freehandPoints || bubble.freehandPoints.length === 0);
+
   return (
     <g transform={`rotate(${bubble.rotation} ${bubble.x} ${bubble.y})`}>
       <g
         onMouseDown={(e) => { if (e.button === 0 && !isActive) onActivate(bubble.id); }}
         style={{ fontFamily: bubble.fontFamily, cursor: isActive ? 'default' : 'pointer' }}
       >
-        {bubble.bubbleVisible && (
+        {bubble.bubbleVisible && !isFreehandEmpty && (
           <g filter={bubbleShadow ? `url(#bubble-shadow-${id})` : 'none'}>
-            <path
-              d={bubblePath}
-              fill={fillColor}
-              stroke={borderColor}
-              strokeWidth={borderWidth}
-              strokeDasharray={borderDashArray}
-              strokeLinejoin="round"
-            />
-            
-            {tailVisible && shape !== ShapeType.THOUGHT && tails.map(tail => {
-                const pathData = tail.type === TailType.LIGHTNING
-                    ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs)
-                    : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
-                return (
-                    <g key={tail.id}>
-                        <path d={pathData.fillPath} fill={fillColor} stroke="none" />
-                        <path
-                            d={pathData.strokePath}
-                            fill="none"
-                            stroke={borderColor}
-                            strokeWidth={borderWidth}
-                            strokeDasharray={borderDashArray}
-                            strokeLinejoin="round"
-                            strokeLinecap="round"
-                        />
-                    </g>
-                );
-            })}
+              {/* Main Bubble Shape: Drawn first */}
+              <path
+                  d={bubblePath}
+                  fill={fillColor}
+                  stroke={borderColor}
+                  strokeWidth={borderWidth}
+                  strokeDasharray={borderDashArray}
+                  strokeLinejoin="round"
+              />
 
-            {tailVisible && shape === ShapeType.THOUGHT && tails.map(tail => (
-              <g key={tail.id}>
-                {getThoughtTailPoints(tail).map((p, i) => (
-                  <circle
-                    key={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={15 * ((i + 1) / 6)}
-                    fill={fillColor}
-                    stroke={borderColor}
-                    strokeWidth={borderWidth / 2}
-                  />
-                ))}
-              </g>
-            ))}
+              {/* Regular Tails: Drawn on top of the main bubble for a seamless join */}
+              {tailVisible && shape !== ShapeType.THOUGHT && tails.map(tail => {
+                  const pathData = tail.type === TailType.LIGHTNING
+                      ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs)
+                      : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
+                  return (
+                      <g key={`tail-group-${tail.id}`}>
+                          {/* Tail fill covers the main bubble's stroke at the junction */}
+                          <path d={pathData.fillPath} fill={fillColor} stroke="none" />
+                          {/* Tail stroke is drawn on top of its own fill */}
+                          <path
+                              d={pathData.strokePath}
+                              fill="none"
+                              stroke={borderColor}
+                              strokeWidth={borderWidth}
+                              strokeDasharray={borderDashArray}
+                              strokeLinejoin="round"
+                              strokeLinecap="round"
+                          />
+                      </g>
+                  );
+              })}
+
+              {/* Thought tails are self-contained and render correctly on top */}
+              {tailVisible && shape === ShapeType.THOUGHT && tails.map(tail => (
+                  <g key={tail.id}>
+                      {getThoughtTailPoints(tail).map((p, i) => (
+                          <circle
+                              key={i}
+                              cx={p.x}
+                              cy={p.y}
+                              r={15 * ((i + 1) / 6)}
+                              fill={fillColor}
+                              stroke={borderColor}
+                              strokeWidth={borderWidth / 2}
+                          />
+                      ))}
+                  </g>
+              ))}
           </g>
         )}
 
-        {!bubble.bubbleVisible && (
+        {(!bubble.bubbleVisible || isFreehandEmpty) && (
           <rect
             x={bubble.x - bubble.width / 2}
             y={bubble.y - bubble.height / 2}
             width={bubble.width}
             height={bubble.height}
             fill="transparent"
+            stroke={isActive && isFreehandEmpty ? 'rgba(255, 255, 255, 0.3)' : 'transparent'}
+            strokeWidth="1"
+            strokeDasharray="4 4"
           />
         )}
 
@@ -338,14 +460,20 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
           y={bubble.y - bubble.height / 2 + borderWidth} 
           width={bubble.width - borderWidth * 2} 
           height={bubble.height - borderWidth * 2} 
-          clipPath={`url(#bubble-clip-${bubble.id})`}
+          clipPath={!isFreehandEmpty ? `url(#bubble-clip-${bubble.id})` : 'none'}
           style={{pointerEvents: 'none'}}
         >
           <div style={textStyle} dangerouslySetInnerHTML={{ __html: bubble.text }} />
         </foreignObject>
       </g>
+      
+      {isActive && isFreehandEmpty && bubble.isDrawingEnabled && (
+          <text x={bubble.x} y={bubble.y} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.7)" style={{pointerEvents: 'none'}}>
+              Click and drag to draw shape
+          </text>
+      )}
 
-      {isActive && (
+      {isActive && !isFreehandEmpty && (
         <g className="drag-handles">
             <circle
                 cx={bubble.x}
@@ -388,15 +516,17 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentDrawingPoints, setCurrentDrawingPoints] = useState<{x:number, y:number}[]>([]);
 
   const [dragStart, setDragStart] = useState<{ x: number, y: number } | null>(null);
   const [initialBubbleState, setInitialBubbleState] = useState<BubbleProps | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
-  const isInteractingWithBubble = !!draggingTailHandle || isDraggingBubble || !!resizeDirection;
   const panningState = useRef<{ startX: number; startY: number; viewBoxX: number; viewBoxY: number; } | null>(null);
 
   const activeBubble = useMemo(() => bubbles.find(b => b.id === activeBubbleId), [bubbles, activeBubbleId]);
+  const isInteractingWithBubble = !!draggingTailHandle || isDraggingBubble || !!resizeDirection || isDrawing;
 
   const getSvgCoordinates = useCallback((e: MouseEvent | React.MouseEvent): {x: number, y: number} => {
     const svg = svgRef.current;
@@ -432,7 +562,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isInteractingWithBubble || !dragStart || !initialBubbleState) return;
+    if (!dragStart || !initialBubbleState) return;
     const currentPos = getSvgCoordinates(e);
     const dx = currentPos.x - dragStart.x;
     const dy = currentPos.y - dragStart.y;
@@ -459,14 +589,27 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
             p2: { x: tail.p2.x + dx, y: tail.p2.y + dy },
             p3: { x: tail.p3.x + dx, y: tail.p3.y + dy },
         }));
+
+        let newFreehandPoints: BubbleProps['freehandPoints'] | undefined = undefined;
+        if (initialBubbleState.shape === ShapeType.FREEHAND && initialBubbleState.freehandPoints) {
+            newFreehandPoints = initialBubbleState.freehandPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+        }
+        
+        let newFreehandRawPoints: BubbleProps['freehandRawPoints'] | undefined = undefined;
+        if (initialBubbleState.shape === ShapeType.FREEHAND && initialBubbleState.freehandRawPoints) {
+            newFreehandRawPoints = initialBubbleState.freehandRawPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+        }
+
         onUpdate({
             x: x + dx,
             y: y + dy,
             tails: newTails,
+            freehandPoints: newFreehandPoints,
+            freehandRawPoints: newFreehandRawPoints,
         });
     } 
     else if (resizeDirection) {
-        const { x: iX, y: iY, width: iWidth, height: iHeight, rotation: iRotation, tails: iTails } = initialBubbleState;
+        const { x: iX, y: iY, width: iWidth, height: iHeight, rotation: iRotation, tails: iTails, freehandPoints: iPoints, freehandRawPoints: iRawPoints } = initialBubbleState;
         let newX = iX, newY = iY, newWidth = iWidth, newHeight = iHeight;
         const minSize = 50;
         
@@ -505,20 +648,53 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         const deltaX = newX - iX;
         const deltaY = newY - iY;
 
+        const newTails = iTails.map(t => ({
+            ...t,
+            p1: { x: t.p1.x + deltaX, y: t.p1.y + deltaY },
+            p2: { x: t.p2.x + deltaX, y: t.p2.y + deltaY },
+            p3: { x: t.p3.x + deltaX, y: t.p3.y + deltaY },
+        }));
+
+        let newFreehandPoints: BubbleProps['freehandPoints'] | undefined = undefined;
+        let newFreehandRawPoints: BubbleProps['freehandRawPoints'] | undefined = undefined;
+        if(initialBubbleState.shape === ShapeType.FREEHAND) {
+            const scaleX = (iWidth > 0) ? newWidth / iWidth : 1;
+            const scaleY = (iHeight > 0) ? newHeight / iHeight : 1;
+            
+            if (iPoints && iPoints.length > 0) {
+              const transformedPoints = iPoints.map(p => ({
+                  x: iX + (p.x - iX) * scaleX,
+                  y: iY + (p.y - iY) * scaleY,
+              }));
+              newFreehandPoints = transformedPoints.map(p => ({
+                  x: p.x + deltaX,
+                  y: p.y + deltaY,
+              }));
+            }
+
+            if (iRawPoints && iRawPoints.length > 0) {
+              const transformedRawPoints = iRawPoints.map(p => ({
+                  x: iX + (p.x - iX) * scaleX,
+                  y: iY + (p.y - iY) * scaleY,
+              }));
+              newFreehandRawPoints = transformedRawPoints.map(p => ({
+                  x: p.x + deltaX,
+                  y: p.y + deltaY,
+              }));
+            }
+        }
+
         onUpdate({
             width: Math.round(newWidth),
             height: Math.round(newHeight),
             x: Math.round(newX),
             y: Math.round(newY),
-            tails: iTails.map(t => ({
-                ...t,
-                p1: { x: t.p1.x + deltaX, y: t.p1.y + deltaY },
-                p2: { x: t.p2.x + deltaX, y: t.p2.y + deltaY },
-                p3: { x: t.p3.x + deltaX, y: t.p3.y + deltaY },
-            })),
+            tails: newTails,
+            freehandPoints: newFreehandPoints,
+            freehandRawPoints: newFreehandRawPoints
         });
     }
-  }, [isInteractingWithBubble, dragStart, initialBubbleState, draggingTailHandle, isDraggingBubble, resizeDirection, getSvgCoordinates, onUpdate]);
+  }, [dragStart, initialBubbleState, draggingTailHandle, isDraggingBubble, resizeDirection, getSvgCoordinates, onUpdate]);
   
   const handleMouseUp = useCallback(() => {
     setDraggingTailHandle(null);
@@ -529,7 +705,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   }, []);
 
   useEffect(() => {
-    if (isInteractingWithBubble) {
+    if (!!draggingTailHandle || isDraggingBubble || !!resizeDirection) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('mouseleave', handleMouseUp);
@@ -539,7 +715,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('mouseleave', handleMouseUp);
     };
-  }, [isInteractingWithBubble, handleMouseMove, handleMouseUp]);
+  }, [draggingTailHandle, isDraggingBubble, resizeDirection, handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     if (initialBubbleState) {
@@ -549,6 +725,42 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         }
     }
   }, [bubbles, initialBubbleState, handleMouseUp]);
+    
+  const showHandles = !isInteractingWithBubble && !panningState.current;
+  const isDrawingMode = !!activeBubble?.isDrawingEnabled && activeBubble?.shape === ShapeType.FREEHAND && !isInteractingWithBubble && !panningState.current;
+
+  const handleSvgMouseDown = (e: React.MouseEvent) => {
+    // isDrawingMode already checks for activeBubble shape, interaction state, etc.
+    if (e.button !== 0 || !isDrawingMode) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDrawing(true);
+    const coords = getSvgCoordinates(e);
+    setCurrentDrawingPoints([coords]);
+  };
+
+  const handleSvgMouseMove = (e: React.MouseEvent) => {
+    if (!isDrawing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const coords = getSvgCoordinates(e);
+    setCurrentDrawingPoints(prev => [...prev, coords]);
+  };
+
+  const handleSvgMouseUp = (e: React.MouseEvent) => {
+    if (!isDrawing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDrawing(false);
+
+    if (currentDrawingPoints.length > 5) {
+      onUpdate({ 
+        freehandRawPoints: currentDrawingPoints,
+      });
+    }
+    setCurrentDrawingPoints([]);
+  };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true);
@@ -631,12 +843,10 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
     window.removeEventListener('mouseup', handlePanMouseUp);
   };
   
-  const showHandles = !isInteractingWithBubble && !panningState.current;
-
   return (
     <div 
         ref={containerRef} 
-        className="w-full h-full p-4 flex items-center justify-center bg-gray-700 rounded-lg shadow-inner relative"
+        className={`w-full h-full p-4 flex items-center justify-center bg-gray-700 rounded-lg shadow-inner relative ${isDrawingMode ? 'cursor-crosshair' : ''}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -644,7 +854,12 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         onWheel={handleWheel}
         onMouseDown={handlePanMouseDown}
     >
-      <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-gray-600">
+      <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-gray-600"
+        onMouseDown={handleSvgMouseDown}
+        onMouseMove={handleSvgMouseMove}
+        onMouseUp={handleSvgMouseUp}
+        onMouseLeave={handleSvgMouseUp}
+      >
         <defs>
           {bubbles.map(bubble => (
             <React.Fragment key={`defs-${bubble.id}`}>
@@ -688,6 +903,17 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
             </foreignObject>
+        )}
+        
+        {isDrawing && currentDrawingPoints.length > 1 && (
+            <path
+              d={`M ${currentDrawingPoints.map(p => `${p.x} ${p.y}`).join(' L ')}`}
+              fill="none"
+              stroke="rgba(167, 139, 250, 0.7)"
+              strokeWidth="2"
+              strokeDasharray="4 4"
+              style={{ pointerEvents: 'none' }}
+            />
         )}
 
         {bubbles.map(bubble => (
