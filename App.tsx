@@ -444,7 +444,7 @@ const App: React.FC = () => {
     <div className="flex flex-col md:flex-row h-full bg-gray-800 text-white font-sans">
       <header className="md:hidden p-4 bg-gray-900 border-b border-gray-700 flex justify-between items-center">
         <h1 className="text-2xl flex items-center" style={{fontFamily: 'Bangers, cursive'}}>
-          <img src="/logo.png" alt="Babbling Book Logo" className="h-8 mr-2" />
+        <img src="/logo.png" alt="Babbling Book Logo" className="h-8 mr-2" />
           <span>Babbling Book</span>
         </h1>
       </header>
