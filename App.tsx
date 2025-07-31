@@ -16,6 +16,7 @@ import PlayIcon from './components/icons/PlayIcon';
 import PauseIcon from './components/icons/PauseIcon';
 import VolumeUpIcon from './components/icons/VolumeUpIcon';
 import VolumeOffIcon from './components/icons/VolumeOffIcon';
+import GlobalSettingsPanel from './components/GlobalSettingsPanel';
 
 const INITIAL_CANVAS_DIMENSIONS = { width: 500, height: 350 };
 
@@ -776,28 +777,12 @@ const App: React.FC = () => {
         </h1>
       </header>
       
-      <aside className="w-full md:w-96 lg:w-[450px] flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
+      <aside className="w-full md:w-96 lg:w-[400px] flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
          {bubbleForPanel ? (
             <ControlPanel 
                 bubbleProps={bubbleForPanel} 
                 onUpdate={handleUpdate}
-                onImageUpload={handleFileInputChange}
-                onVideoUpload={handleVideoInputChange}
-                onClearBackground={handleClearBackground}
-                hasImage={!!backgroundImage}
-                hasVideo={!!backgroundVideo}
-                onAddBubble={handleAddBubble}
-                onDeleteBubble={handleDeleteBubble}
-                bubbleCount={bubbles.length}
                 nextTailId={nextTailId}
-                backgroundFilters={backgroundFilters}
-                onUpdateFilters={handleUpdateFilters}
-                showExportFrame={showExportFrame}
-                onSetShowExportFrame={setShowExportFrame}
-                exportFrame={exportFrame}
-                onUpdateExportFrame={handleUpdateExportFrame}
-                onResetExportFrame={handleResetExportFrame}
-                canvasDimensions={canvasDimensions}
             />
          ) : (
             <div className="p-6 text-gray-400 flex items-center justify-center h-full">
@@ -933,6 +918,27 @@ const App: React.FC = () => {
         <div className="flex-shrink-0 flex justify-center items-center pt-2">
         </div>
       </main>
+
+      <aside className="w-full md:w-64 flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
+         <GlobalSettingsPanel 
+            onImageUpload={handleFileInputChange}
+            onVideoUpload={handleVideoInputChange}
+            onClearBackground={handleClearBackground}
+            hasImage={!!backgroundImage}
+            hasVideo={!!backgroundVideo}
+            onAddBubble={handleAddBubble}
+            onDeleteBubble={handleDeleteBubble}
+            bubbleCount={bubbles.length}
+            backgroundFilters={backgroundFilters}
+            onUpdateFilters={handleUpdateFilters}
+            showExportFrame={showExportFrame}
+            onSetShowExportFrame={setShowExportFrame}
+            exportFrame={exportFrame}
+            onUpdateExportFrame={handleUpdateExportFrame}
+            onResetExportFrame={handleResetExportFrame}
+            canvasDimensions={canvasDimensions}
+         />
+      </aside>
     </div>
   );
 };

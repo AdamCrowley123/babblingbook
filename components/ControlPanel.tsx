@@ -1,36 +1,18 @@
 import React, { useState } from 'react';
-import type { BubbleProps, TailProps, BackgroundFilters, ExportFrame } from '../types';
+import type { BubbleProps, TailProps } from '../types';
 import { ShapeType, TailType } from '../types';
 import { FONT_FAMILIES, SHAPE_OPTIONS, BORDER_STYLE_OPTIONS, TEXT_ALIGN_OPTIONS } from '../constants';
-import UploadIcon from './icons/UploadIcon';
 import TrashIcon from './icons/TrashIcon';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import EmojiIcon from './icons/EmojiIcon';
 import AddIcon from './icons/AddIcon';
 import ResetIcon from './icons/ResetIcon';
-import VideoIcon from './icons/VideoIcon';
 
 
 interface ControlPanelProps {
   bubbleProps: BubbleProps;
   onUpdate: (updates: Partial<BubbleProps>) => void;
-  onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onVideoUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onClearBackground: () => void;
-  hasImage: boolean;
-  hasVideo: boolean;
-  onAddBubble: () => void;
-  onDeleteBubble: () => void;
-  bubbleCount: number;
   nextTailId: React.MutableRefObject<number>;
-  backgroundFilters: BackgroundFilters;
-  onUpdateFilters: (updates: Partial<BackgroundFilters>) => void;
-  showExportFrame: boolean;
-  onSetShowExportFrame: (value: boolean) => void;
-  exportFrame: ExportFrame | null;
-  onUpdateExportFrame: (updates: Partial<ExportFrame>) => void;
-  onResetExportFrame: () => void;
-  canvasDimensions: { width: number; height: number };
 }
 
 const Section: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
@@ -226,38 +208,8 @@ const ShapeIcon: React.FC<{shape: ShapeType}> = ({shape}) => {
     }
 }
 
-const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    width="24" 
-    height="24" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="m6 9 6 6 6-6"/>
-  </svg>
-);
-
-const CompactSlider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = 'px' }) => (
-    <div>
-      <div className="flex justify-between items-baseline mb-1">
-        <label htmlFor={`compact-slider-${label}`} className="text-xs font-medium text-gray-300">{label}</label>
-        <span className="text-xs font-mono text-gray-400">{value}{unit}</span>
-      </div>
-      <input id={`compact-slider-${label}`} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(step === 1 ? parseInt(e.target.value) : parseFloat(e.target.value))} className="w-full mt-0 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
-    </div>
-);
-
-
-const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId, backgroundFilters, onUpdateFilters, showExportFrame, onSetShowExportFrame, exportFrame, onUpdateExportFrame, onResetExportFrame, canvasDimensions }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, nextTailId }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
-  const [isEffectsExpanded, setIsEffectsExpanded] = useState(true);
-  const [isExportAreaExpanded, setIsExportAreaExpanded] = useState(true);
   
     const handleAddTail = () => {
         const baseTail = bubbleProps.tails[bubbleProps.tails.length - 1] || {
@@ -292,105 +244,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
         );
         onUpdate({ tails: newTails });
     };
-    const hasBackground = hasImage || hasVideo;
+
   return (
     <div className="bg-gray-900 h-full flex flex-col">
-       <div className="p-6 border-b border-gray-800">
-            <Section title="Global Settings">
-                <div className="flex space-x-2">
-                    <button onClick={onAddBubble} className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-md transition-colors" title="Add a new bubble">
-                        <AddIcon className="w-5 h-5" />
-                        <span>Add New</span>
-                    </button>
-                    <button onClick={onDeleteBubble} disabled={bubbleCount <= 1} className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed" title={bubbleCount <= 1 ? "Cannot delete the last bubble" : "Delete the active bubble"}>
-                        <TrashIcon className="w-5 h-5" />
-                        <span>Delete Active</span>
-                    </button>
-                </div>
-                 <p className="text-xs text-gray-400 mt-2 text-center">Click a bubble in the preview to edit it.</p>
-                <div className="flex items-center space-x-2 pt-4 border-t border-gray-700 mt-4">
-                    <label htmlFor="image-upload" className={`flex-1 cursor-pointer flex items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors ${hasVideo ? 'opacity-50 cursor-not-allowed' : ''}`} title={hasVideo ? "Clear video background to upload an image" : "Upload background image"}>
-                        <UploadIcon className="w-5 h-5" />
-                        <span>Image</span>
-                    </label>
-                    <input id="image-upload" type="file" accept="image/*" onChange={onImageUpload} className="hidden" disabled={hasVideo}/>
-
-                    <label htmlFor="video-upload" className={`flex-1 cursor-pointer flex items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors ${hasImage ? 'opacity-50 cursor-not-allowed' : ''}`} title={hasImage ? "Clear image background to upload a video" : "Upload background video"}>
-                        <VideoIcon className="w-5 h-5" />
-                        <span>Video</span>
-                    </label>
-                    <input id="video-upload" type="file" accept="video/*" onChange={onVideoUpload} className="hidden" disabled={hasImage}/>
-
-                    {hasBackground && (
-                        <button onClick={onClearBackground} className="p-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors" title="Clear background">
-                        <TrashIcon className="w-5 h-5" />
-                        </button>
-                    )}
-                </div>
-                {hasBackground && (
-                    <div className="mt-4 pt-4 border-t border-gray-700">
-                        <Toggle label="Show Export Frame" checked={showExportFrame} onChange={onSetShowExportFrame} />
-                    </div>
-                )}
-            </Section>
-            {hasBackground && (
-                <div className="mt-4">
-                    <h3 
-                        className="text-md font-bold text-gray-200 mb-3 border-b border-gray-700 pb-2 flex justify-between items-center cursor-pointer select-none"
-                        onClick={() => setIsEffectsExpanded(!isEffectsExpanded)}
-                    >
-                        <span>Background Effects</span>
-                        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transform transition-transform duration-200 ${isEffectsExpanded ? '' : '-rotate-90'}`} />
-                    </h3>
-                    {isEffectsExpanded && (
-                        <div className="pt-2 animate-fade-in-down">
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                                <CompactSlider label="Brightness" value={backgroundFilters.brightness} min={0} max={200} onChange={(v) => onUpdateFilters({ brightness: v })} unit="%" />
-                                <CompactSlider label="Contrast" value={backgroundFilters.contrast} min={0} max={200} onChange={(v) => onUpdateFilters({ contrast: v })} unit="%" />
-                                <CompactSlider label="Saturation" value={backgroundFilters.saturate} min={0} max={200} onChange={(v) => onUpdateFilters({ saturate: v })} unit="%" />
-                                <CompactSlider label="Temperature" value={backgroundFilters.temperature} min={-100} max={100} onChange={(v) => onUpdateFilters({ temperature: v })} unit="" />
-                            </div>
-                            <button
-                                onClick={() => onUpdateFilters({ brightness: 100, contrast: 100, saturate: 100, temperature: 0 })}
-                                className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors text-sm"
-                            >
-                                <ResetIcon className="w-4 h-4" />
-                                <span>Reset Filters</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-            {hasBackground && showExportFrame && exportFrame && (
-                <div className="mt-4">
-                    <h3 
-                        className="text-md font-bold text-gray-200 mb-3 border-b border-gray-700 pb-2 flex justify-between items-center cursor-pointer select-none"
-                        onClick={() => setIsExportAreaExpanded(!isExportAreaExpanded)}
-                    >
-                        <span>Export Area</span>
-                        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transform transition-transform duration-200 ${isExportAreaExpanded ? '' : '-rotate-90'}`} />
-                    </h3>
-                    {isExportAreaExpanded && (
-                         <div className="pt-2 animate-fade-in-down">
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                                <CompactSlider label="Crop X" value={exportFrame.x} min={0} max={canvasDimensions.width - exportFrame.width} onChange={(v) => onUpdateExportFrame({ x: v })} unit="px" />
-                                <CompactSlider label="Crop Y" value={exportFrame.y} min={0} max={canvasDimensions.height - exportFrame.height} onChange={(v) => onUpdateExportFrame({ y: v })} unit="px" />
-                                <CompactSlider label="Crop Width" value={exportFrame.width} min={50} max={canvasDimensions.width} onChange={(v) => onUpdateExportFrame({ width: v })} unit="px" />
-                                <CompactSlider label="Crop Height" value={exportFrame.height} min={50} max={canvasDimensions.height} onChange={(v) => onUpdateExportFrame({ height: v })} unit="px" />
-                            </div>
-                            <button
-                                onClick={onResetExportFrame}
-                                className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors text-sm"
-                            >
-                                <ResetIcon className="w-4 h-4" />
-                                <span>Reset Crop Area</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-       </div>
-       
        <div className="flex-grow flex flex-col overflow-hidden">
             <div className="flex-shrink-0 border-b-2 border-indigo-500">
                 <nav className="flex space-x-2 px-6">
