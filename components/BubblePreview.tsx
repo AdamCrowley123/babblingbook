@@ -1,8 +1,7 @@
 
-
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ShapeType, BorderStyle, TailType } from '../types';
-import type { BubbleProps, TailPosition, TailProps, BackgroundFilters } from '../types';
+import type { BubbleProps, TailPosition, TailProps, BackgroundFilters, ExportFrame } from '../types';
 import UploadIcon from './icons/UploadIcon';
 
 //#region Path Utilities
@@ -129,6 +128,8 @@ interface BubblePreviewProps {
   backgroundFilters: BackgroundFilters;
   showExportFrame: boolean;
   canvasDimensions: { width: number; height: number };
+  exportFrame: ExportFrame | null;
+  onUpdateExportFrame: (updates: Partial<ExportFrame>) => void;
 }
 
 const DraggableHandle: React.FC<{
@@ -152,13 +153,14 @@ const ResizeHandle: React.FC<{
   y: number;
   cursor: string;
   onMouseDown: (e: React.MouseEvent) => void;
-}> = ({ x, y, cursor, onMouseDown }) => (
+  color?: string;
+}> = ({ x, y, cursor, onMouseDown, color = "rgba(59, 130, 246, 0.8)" }) => (
   <rect
     x={x - 5}
     y={y - 5}
     width="10"
     height="10"
-    fill="rgba(59, 130, 246, 0.8)"
+    fill={color}
     stroke="white"
     strokeWidth="1.5"
     cursor={cursor}
@@ -353,6 +355,8 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
     wordBreak: 'break-word',
     whiteSpace: 'pre-wrap',
     pointerEvents: 'none',
+    transform: `rotate(${bubble.textRotation}deg) scale(${bubble.textScaleX}, ${bubble.textScaleY})`,
+    transformOrigin: 'center',
   };
 
   const textShadows: string[] = [];
@@ -527,7 +531,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
   );
 });
 
-const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, backgroundVideo, videoRef, onFileDrop, onVideoFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth, backgroundFilters, showExportFrame, canvasDimensions }) => {
+const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, backgroundVideo, videoRef, onFileDrop, onVideoFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth, backgroundFilters, showExportFrame, canvasDimensions, exportFrame, onUpdateExportFrame }) => {
   const [draggingTailHandle, setDraggingTailHandle] = useState<{ id: number; handle: 'p1' | 'p2' | 'p3' } | null>(null);
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
@@ -563,15 +567,15 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   }, [videoRef, backgroundVideo]);
 
   const handleInteractionStart = (e: React.MouseEvent, type: 'tail' | 'bubble' | 'resize', payload: any) => {
-    if (e.button !== 0) return; // Only allow left click for bubble interactions
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    if (!activeBubble) return;
 
     const startPos = getSvgCoordinates(e);
     setDragStart(startPos);
+    
+    if (!activeBubble) return;
     setInitialBubbleState(activeBubble);
-
     if (type === 'tail') setDraggingTailHandle(payload);
     else if (type === 'bubble') setIsDraggingBubble(true);
     else if (type === 'resize') setResizeDirection(payload as string);
@@ -721,7 +725,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   }, []);
 
   useEffect(() => {
-    if (!!draggingTailHandle || isDraggingBubble || !!resizeDirection) {
+    if (isInteractingWithBubble) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('mouseleave', handleMouseUp);
@@ -731,7 +735,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('mouseleave', handleMouseUp);
     };
-  }, [draggingTailHandle, isDraggingBubble, resizeDirection, handleMouseMove, handleMouseUp]);
+  }, [isInteractingWithBubble, handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     if (initialBubbleState) {
@@ -950,7 +954,6 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
                 <video 
                     ref={videoRef}
                     src={backgroundVideo}
-                    muted
                     playsInline
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
@@ -979,19 +982,21 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
             />
         ))}
         
-        {(backgroundImage || backgroundVideo) && showExportFrame && (
-            <rect
-                id="export-frame-guide"
-                x="0"
-                y="0"
-                width={canvasDimensions.width}
-                height={canvasDimensions.height}
-                fill="none"
-                stroke="#ff0000"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
-                style={{ pointerEvents: 'none' }}
-            />
+        {(backgroundImage || backgroundVideo) && showExportFrame && exportFrame && (
+            <g style={{ pointerEvents: 'none' }}>
+                <rect
+                    id="export-frame-guide"
+                    x={exportFrame.x}
+                    y={exportFrame.y}
+                    width={exportFrame.width}
+                    height={exportFrame.height}
+                    fill="none"
+                    stroke="#ff0000"
+                    strokeWidth="2"
+                    strokeOpacity="0.8"
+                    vectorEffect="non-scaling-stroke"
+                />
+            </g>
         )}
       </svg>
       {isDraggingOver && (

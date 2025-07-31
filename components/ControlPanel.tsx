@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { BubbleProps, TailProps, BackgroundFilters } from '../types';
+import type { BubbleProps, TailProps, BackgroundFilters, ExportFrame } from '../types';
 import { ShapeType, TailType } from '../types';
 import { FONT_FAMILIES, SHAPE_OPTIONS, BORDER_STYLE_OPTIONS, TEXT_ALIGN_OPTIONS } from '../constants';
 import UploadIcon from './icons/UploadIcon';
@@ -27,6 +27,10 @@ interface ControlPanelProps {
   onUpdateFilters: (updates: Partial<BackgroundFilters>) => void;
   showExportFrame: boolean;
   onSetShowExportFrame: (value: boolean) => void;
+  exportFrame: ExportFrame | null;
+  onUpdateExportFrame: (updates: Partial<ExportFrame>) => void;
+  onResetExportFrame: () => void;
+  canvasDimensions: { width: number; height: number };
 }
 
 const Section: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
@@ -239,7 +243,7 @@ const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
-const CompactSlider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = '%' }) => (
+const CompactSlider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = 'px' }) => (
     <div>
       <div className="flex justify-between items-baseline mb-1">
         <label htmlFor={`compact-slider-${label}`} className="text-xs font-medium text-gray-300">{label}</label>
@@ -250,9 +254,10 @@ const CompactSlider: React.FC<{ label: string; value: number; min: number; max: 
 );
 
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId, backgroundFilters, onUpdateFilters, showExportFrame, onSetShowExportFrame }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, nextTailId, backgroundFilters, onUpdateFilters, showExportFrame, onSetShowExportFrame, exportFrame, onUpdateExportFrame, onResetExportFrame, canvasDimensions }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
   const [isEffectsExpanded, setIsEffectsExpanded] = useState(true);
+  const [isExportAreaExpanded, setIsExportAreaExpanded] = useState(true);
   
     const handleAddTail = () => {
         const baseTail = bubbleProps.tails[bubbleProps.tails.length - 1] || {
@@ -340,9 +345,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                     {isEffectsExpanded && (
                         <div className="pt-2 animate-fade-in-down">
                             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                                <CompactSlider label="Brightness" value={backgroundFilters.brightness} min={0} max={200} onChange={(v) => onUpdateFilters({ brightness: v })} />
-                                <CompactSlider label="Contrast" value={backgroundFilters.contrast} min={0} max={200} onChange={(v) => onUpdateFilters({ contrast: v })} />
-                                <CompactSlider label="Saturation" value={backgroundFilters.saturate} min={0} max={200} onChange={(v) => onUpdateFilters({ saturate: v })} />
+                                <CompactSlider label="Brightness" value={backgroundFilters.brightness} min={0} max={200} onChange={(v) => onUpdateFilters({ brightness: v })} unit="%" />
+                                <CompactSlider label="Contrast" value={backgroundFilters.contrast} min={0} max={200} onChange={(v) => onUpdateFilters({ contrast: v })} unit="%" />
+                                <CompactSlider label="Saturation" value={backgroundFilters.saturate} min={0} max={200} onChange={(v) => onUpdateFilters({ saturate: v })} unit="%" />
                                 <CompactSlider label="Temperature" value={backgroundFilters.temperature} min={-100} max={100} onChange={(v) => onUpdateFilters({ temperature: v })} unit="" />
                             </div>
                             <button
@@ -351,6 +356,34 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                             >
                                 <ResetIcon className="w-4 h-4" />
                                 <span>Reset Filters</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+            {hasBackground && showExportFrame && exportFrame && (
+                <div className="mt-4">
+                    <h3 
+                        className="text-md font-bold text-gray-200 mb-3 border-b border-gray-700 pb-2 flex justify-between items-center cursor-pointer select-none"
+                        onClick={() => setIsExportAreaExpanded(!isExportAreaExpanded)}
+                    >
+                        <span>Export Area</span>
+                        <ChevronDownIcon className={`w-5 h-5 text-gray-400 transform transition-transform duration-200 ${isExportAreaExpanded ? '' : '-rotate-90'}`} />
+                    </h3>
+                    {isExportAreaExpanded && (
+                         <div className="pt-2 animate-fade-in-down">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                <CompactSlider label="Crop X" value={exportFrame.x} min={0} max={canvasDimensions.width - exportFrame.width} onChange={(v) => onUpdateExportFrame({ x: v })} unit="px" />
+                                <CompactSlider label="Crop Y" value={exportFrame.y} min={0} max={canvasDimensions.height - exportFrame.height} onChange={(v) => onUpdateExportFrame({ y: v })} unit="px" />
+                                <CompactSlider label="Crop Width" value={exportFrame.width} min={50} max={canvasDimensions.width} onChange={(v) => onUpdateExportFrame({ width: v })} unit="px" />
+                                <CompactSlider label="Crop Height" value={exportFrame.height} min={50} max={canvasDimensions.height} onChange={(v) => onUpdateExportFrame({ height: v })} unit="px" />
+                            </div>
+                            <button
+                                onClick={onResetExportFrame}
+                                className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors text-sm"
+                            >
+                                <ResetIcon className="w-4 h-4" />
+                                <span>Reset Crop Area</span>
                             </button>
                         </div>
                     )}
@@ -411,6 +444,38 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                                         <Slider label="Outline Width" value={bubbleProps.textOutlineWidth} min={0} max={10} onChange={(v) => onUpdate({ textOutlineWidth: v })} />
                                     </div>
                                 )}
+                            </div>
+                        </Section>
+                        <Section title="Text Transform">
+                            <div className="space-y-3 p-3 bg-gray-800 rounded-lg">
+                                <Slider
+                                    label="Rotation"
+                                    value={bubbleProps.textRotation ?? 0}
+                                    min={-180} max={180}
+                                    onChange={(v) => onUpdate({ textRotation: v })}
+                                    unit="°"
+                                />
+                                <Slider
+                                    label="Horizontal Scale"
+                                    value={bubbleProps.textScaleX ?? 1}
+                                    min={0.5} max={2} step={0.05}
+                                    onChange={(v) => onUpdate({ textScaleX: v })}
+                                    unit="x"
+                                />
+                                <Slider
+                                    label="Vertical Scale"
+                                    value={bubbleProps.textScaleY ?? 1}
+                                    min={0.5} max={2} step={0.05}
+                                    onChange={(v) => onUpdate({ textScaleY: v })}
+                                    unit="x"
+                                />
+                                <button
+                                    onClick={() => onUpdate({ textRotation: 0, textScaleX: 1, textScaleY: 1 })}
+                                    className="w-full mt-2 flex items-center justify-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors text-sm"
+                                >
+                                    <ResetIcon className="w-4 h-4" />
+                                    <span>Reset Transform</span>
+                                </button>
                             </div>
                         </Section>
                     </div>

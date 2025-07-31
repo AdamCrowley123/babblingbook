@@ -47,6 +47,13 @@ export interface BackgroundFilters {
   temperature: number;
 }
 
+export interface ExportFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface BubbleProps {
   id: number;
   text: string;
@@ -66,6 +73,9 @@ export interface BubbleProps {
   x: number;
   y: number;
   rotation: number;
+  textRotation: number;
+  textScaleX: number;
+  textScaleY: number;
   bubbleVisible: boolean;
   textShadow: boolean;
   textShadowColor: string;
