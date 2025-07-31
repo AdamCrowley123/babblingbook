@@ -17,6 +17,7 @@ import PauseIcon from './components/icons/PauseIcon';
 import VolumeUpIcon from './components/icons/VolumeUpIcon';
 import VolumeOffIcon from './components/icons/VolumeOffIcon';
 import GlobalSettingsPanel from './components/GlobalSettingsPanel';
+import InfoPanel from './components/InfoPanel';
 
 const INITIAL_CANVAS_DIMENSIONS = { width: 500, height: 350 };
 
@@ -919,25 +920,30 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <aside className="w-full md:w-64 flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
-         <GlobalSettingsPanel 
-            onImageUpload={handleFileInputChange}
-            onVideoUpload={handleVideoInputChange}
-            onClearBackground={handleClearBackground}
-            hasImage={!!backgroundImage}
-            hasVideo={!!backgroundVideo}
-            onAddBubble={handleAddBubble}
-            onDeleteBubble={handleDeleteBubble}
-            bubbleCount={bubbles.length}
-            backgroundFilters={backgroundFilters}
-            onUpdateFilters={handleUpdateFilters}
-            showExportFrame={showExportFrame}
-            onSetShowExportFrame={setShowExportFrame}
-            exportFrame={exportFrame}
-            onUpdateExportFrame={handleUpdateExportFrame}
-            onResetExportFrame={handleResetExportFrame}
-            canvasDimensions={canvasDimensions}
-         />
+       <aside className="w-full md:w-64 flex-shrink-0 bg-gray-900 h-auto md:h-full flex flex-col">
+         <div className="flex-grow min-h-0">
+            <GlobalSettingsPanel 
+                onImageUpload={handleFileInputChange}
+                onVideoUpload={handleVideoInputChange}
+                onClearBackground={handleClearBackground}
+                hasImage={!!backgroundImage}
+                hasVideo={!!backgroundVideo}
+                onAddBubble={handleAddBubble}
+                onDeleteBubble={handleDeleteBubble}
+                bubbleCount={bubbles.length}
+                backgroundFilters={backgroundFilters}
+                onUpdateFilters={handleUpdateFilters}
+                showExportFrame={showExportFrame}
+                onSetShowExportFrame={setShowExportFrame}
+                exportFrame={exportFrame}
+                onUpdateExportFrame={handleUpdateExportFrame}
+                onResetExportFrame={handleResetExportFrame}
+                canvasDimensions={canvasDimensions}
+            />
+         </div>
+         <div className="flex-shrink-0">
+            <InfoPanel />
+         </div>
       </aside>
     </div>
   );
