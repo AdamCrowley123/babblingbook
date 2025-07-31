@@ -770,15 +770,15 @@ const App: React.FC = () => {
   const hasBackground = !!backgroundImage || !!backgroundVideo;
 
   return (
-    <div className="flex flex-col md:flex-row h-full bg-slate-800 text-white font-sans">
-      <header className="md:hidden p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
+    <div className="flex flex-col md:flex-row h-full bg-stone-800 text-white font-sans">
+      <header className="md:hidden p-4 bg-stone-900 border-b border-stone-700 flex justify-between items-center">
         <h1 className="text-2xl flex items-center" style={{fontFamily: 'Bangers, cursive'}}>
           <img src="/logo.png" alt="Babbling Book Logo" className="h-8 mr-2" />
           <span>Babbling Book</span>
         </h1>
       </header>
       
-      <aside className="w-full md:w-96 lg:w-[400px] flex-shrink-0 bg-slate-900 h-auto md:h-full flex flex-col">
+      <aside className="w-full md:w-96 lg:w-[400px] flex-shrink-0 bg-stone-900 h-auto md:h-full flex flex-col">
          {bubbleForPanel ? (
             <ControlPanel 
                 bubbleProps={bubbleForPanel} 
@@ -786,7 +786,7 @@ const App: React.FC = () => {
                 nextTailId={nextTailId}
             />
          ) : (
-            <div className="p-6 text-slate-400 flex items-center justify-center h-full">
+            <div className="p-6 text-stone-400 flex items-center justify-center h-full">
                 <p>Initializing...</p>
             </div>
          )}
@@ -807,13 +807,13 @@ const App: React.FC = () => {
                     value={exportFilename}
                     onChange={(e) => setExportFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
                     placeholder="File Name"
-                    className="w-full sm:w-40 px-3 py-2 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder-slate-400"
+                    className="w-full sm:w-40 px-3 py-2 bg-stone-700 border border-stone-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder-stone-400"
                     title="Set the name for exported files"
                 />
             </div>
             <button
               onClick={handleReset}
-              className="flex items-center space-x-2 px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-md transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-stone-600 hover:bg-stone-500 rounded-md transition-colors"
               title="Reset to default"
             >
               <ResetIcon className="w-5 h-5" />
@@ -833,7 +833,7 @@ const App: React.FC = () => {
                 disabled={!hasBackground}
                 trigger={
                     <button 
-                        className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md transition-colors disabled:bg-slate-500 disabled:cursor-not-allowed w-full sm:w-auto justify-center"
+                        className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md transition-colors disabled:bg-stone-500 disabled:cursor-not-allowed w-full sm:w-auto justify-center"
                         disabled={!hasBackground}
                         title={!hasBackground ? "Upload a background to export the scene" : "Export scene"}
                     >
@@ -871,33 +871,33 @@ const App: React.FC = () => {
               exportFrame={exportFrame}
               onUpdateExportFrame={handleUpdateExportFrame}
           />
-           <div className="absolute bottom-4 right-4 bg-slate-900 bg-opacity-80 rounded-lg p-1 flex flex-col items-center space-y-1 shadow-lg">
+           <div className="absolute bottom-4 right-4 bg-stone-900 bg-opacity-80 rounded-lg p-1 flex flex-col items-center space-y-1 shadow-lg">
                 <div className="flex space-x-1">
-                    <button onClick={() => handleZoom(0.8)} className="p-2 hover:bg-slate-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Zoom In" disabled={isAtMaxZoom}><ZoomInIcon className="w-5 h-5"/></button>
-                    <button onClick={() => handleZoom(1.25)} className="p-2 hover:bg-slate-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Zoom Out" disabled={isAtMinZoom}><ZoomOutIcon className="w-5 h-5"/></button>
-                    <button onClick={handleResetView} className="p-2 hover:bg-slate-700 rounded-md transition-colors" title="Fit to Screen"><FitToScreenIcon className="w-5 h-5"/></button>
+                    <button onClick={() => handleZoom(0.8)} className="p-2 hover:bg-stone-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Zoom In" disabled={isAtMaxZoom}><ZoomInIcon className="w-5 h-5"/></button>
+                    <button onClick={() => handleZoom(1.25)} className="p-2 hover:bg-stone-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Zoom Out" disabled={isAtMinZoom}><ZoomOutIcon className="w-5 h-5"/></button>
+                    <button onClick={handleResetView} className="p-2 hover:bg-stone-700 rounded-md transition-colors" title="Fit to Screen"><FitToScreenIcon className="w-5 h-5"/></button>
                 </div>
-                <div className="text-xs text-center text-slate-400 font-mono select-none px-2">
+                <div className="text-xs text-center text-stone-400 font-mono select-none px-2">
                   {zoomPercentage}%
                 </div>
                 <div className="grid grid-cols-3 gap-px w-full">
                     <div></div>
-                    <button onClick={() => handlePan('up')} className="p-1 hover:bg-slate-700 rounded-md transition-colors flex justify-center" title="Pan Up"><ArrowIcon className="w-4 h-4"/></button>
+                    <button onClick={() => handlePan('up')} className="p-1 hover:bg-stone-700 rounded-md transition-colors flex justify-center" title="Pan Up"><ArrowIcon className="w-4 h-4"/></button>
                     <div></div>
-                    <button onClick={() => handlePan('left')} className="p-1 hover:bg-slate-700 rounded-md transition-colors flex justify-center" title="Pan Left"><ArrowIcon className="w-4 h-4 transform -rotate-90"/></button>
+                    <button onClick={() => handlePan('left')} className="p-1 hover:bg-stone-700 rounded-md transition-colors flex justify-center" title="Pan Left"><ArrowIcon className="w-4 h-4 transform -rotate-90"/></button>
                     <div></div>
-                    <button onClick={() => handlePan('right')} className="p-1 hover:bg-slate-700 rounded-md transition-colors flex justify-center" title="Pan Right"><ArrowIcon className="w-4 h-4 transform rotate-90"/></button>
+                    <button onClick={() => handlePan('right')} className="p-1 hover:bg-stone-700 rounded-md transition-colors flex justify-center" title="Pan Right"><ArrowIcon className="w-4 h-4 transform rotate-90"/></button>
                     <div></div>
-                    <button onClick={() => handlePan('down')} className="p-1 hover:bg-slate-700 rounded-md transition-colors flex justify-center" title="Pan Down"><ArrowIcon className="w-4 h-4 transform rotate-180"/></button>
+                    <button onClick={() => handlePan('down')} className="p-1 hover:bg-stone-700 rounded-md transition-colors flex justify-center" title="Pan Down"><ArrowIcon className="w-4 h-4 transform rotate-180"/></button>
                     <div></div>
                 </div>
             </div>
             {backgroundVideo && (
                 <div className="flex-shrink-0 pt-4 px-4 flex items-center justify-center space-x-4">
-                    <button onClick={handlePlayPause} className="p-2 hover:bg-slate-700 rounded-md transition-colors" title={isPlaying ? 'Pause' : 'Play'}>
+                    <button onClick={handlePlayPause} className="p-2 hover:bg-stone-700 rounded-md transition-colors" title={isPlaying ? 'Pause' : 'Play'}>
                         {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
                     </button>
-                    <button onClick={handleMuteToggle} className="p-2 hover:bg-slate-700 rounded-md transition-colors" title={isMuted ? 'Unmute' : 'Mute'}>
+                    <button onClick={handleMuteToggle} className="p-2 hover:bg-stone-700 rounded-md transition-colors" title={isMuted ? 'Unmute' : 'Mute'}>
                         {isMuted ? <VolumeOffIcon className="w-5 h-5" /> : <VolumeUpIcon className="w-5 h-5" />}
                     </button>
                     <input
@@ -907,10 +907,10 @@ const App: React.FC = () => {
                         step="0.01"
                         value={videoCurrentTime}
                         onChange={handleScrubberChange}
-                        className="w-full md:w-1/2 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                        className="w-full md:w-1/2 h-2 bg-stone-700 rounded-lg appearance-none cursor-pointer"
                         title="Scrub video frame"
                     />
-                    <span className="text-sm font-mono text-slate-400 whitespace-nowrap">
+                    <span className="text-sm font-mono text-stone-400 whitespace-nowrap">
                         {new Date(videoCurrentTime * 1000).toISOString().substr(14, 5)} / {new Date(videoDuration * 1000).toISOString().substr(14, 5)}
                     </span>
                 </div>
@@ -920,7 +920,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-       <aside className="w-full md:w-64 flex-shrink-0 bg-slate-900 h-auto md:h-full flex flex-col">
+       <aside className="w-full md:w-64 flex-shrink-0 bg-stone-900 h-auto md:h-full flex flex-col">
          <div className="flex-grow min-h-0">
             <GlobalSettingsPanel 
                 onImageUpload={handleFileInputChange}

@@ -881,7 +881,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   return (
     <div 
         ref={containerRef} 
-        className={`w-full h-full p-4 flex items-center justify-center bg-gray-700 rounded-lg shadow-inner relative ${isDrawingMode ? 'cursor-crosshair' : ''}`}
+        className={`w-full h-full p-4 flex items-center justify-center bg-stone-700 rounded-lg shadow-inner relative ${isDrawingMode ? 'cursor-crosshair' : ''}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -889,7 +889,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         onWheel={handleWheel}
         onMouseDown={handlePanMouseDown}
     >
-      <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-gray-600"
+      <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-stone-600"
         onMouseDown={handleSvgMouseDown}
         onMouseMove={handleSvgMouseMove}
         onMouseUp={handleSvgMouseUp}
@@ -1000,7 +1000,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         )}
       </svg>
       {isDraggingOver && (
-        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center border-4 border-dashed border-gray-400 rounded-lg pointer-events-none z-10 transition-opacity">
+        <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center border-4 border-dashed border-stone-400 rounded-lg pointer-events-none z-10 transition-opacity">
             <UploadIcon className="w-16 h-16 text-white mb-4" />
             <p className="text-white text-xl font-bold">Drop Image or Video to Upload</p>
         </div>
