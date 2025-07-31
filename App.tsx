@@ -578,63 +578,120 @@ const App: React.FC = () => {
   };
 
   const getFullSceneAsCanvas = async (): Promise<HTMLCanvasElement | null> => {
-      const { width: sceneWidth, height: sceneHeight } = canvasDimensions;
-      const fullCanvas = document.createElement('canvas');
-      fullCanvas.width = sceneWidth;
-      fullCanvas.height = sceneHeight;
-      const ctx = fullCanvas.getContext('2d');
-      if (!ctx) return null;
+    const { width: sceneWidth, height: sceneHeight } = canvasDimensions;
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = sceneWidth;
+    fullCanvas.height = sceneHeight;
+    const ctx = fullCanvas.getContext('2d');
+    if (!ctx) return null;
 
-      // Apply filters
-      const { brightness, contrast, saturate } = backgroundFilters;
-      ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturate}%)`;
-      // Note: Temperature filter is SVG-only and will not be applied in canvas export.
+    const hasBackground = backgroundImage || backgroundVideo;
 
-      // Draw background (image or video frame)
-      try {
-          if (backgroundVideo && videoRef.current) {
-              ctx.drawImage(videoRef.current, 0, 0, sceneWidth, sceneHeight);
-          } else if (backgroundImage) {
-              const bgImg = new Image();
-              await new Promise<void>((resolve, reject) => {
-                  bgImg.onload = () => resolve();
-                  bgImg.onerror = () => reject(new Error('Failed to load background image for export.'));
-                  bgImg.crossOrigin = "anonymous";
-                  bgImg.src = backgroundImage;
-              });
-              ctx.drawImage(bgImg, 0, 0, sceneWidth, sceneHeight);
-          }
-      } catch (error) {
-          console.error("Failed to load background media for export.", error);
-          alert(`Could not load the background for export. ${error instanceof Error ? error.message : ''}`);
-          return null;
-      }
+    // 1. Draw filtered background if it exists
+    if (hasBackground) {
+        let sourceDataURL: string | null = null;
+        try {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = sceneWidth;
+            tempCanvas.height = sceneHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) throw new Error("Could not create temp canvas context.");
 
-      // Reset filter before drawing SVG overlay so it's not affected
-      ctx.filter = 'none';
+            if (backgroundVideo && videoRef.current) {
+                tempCtx.drawImage(videoRef.current, 0, 0, sceneWidth, sceneHeight);
+                sourceDataURL = tempCanvas.toDataURL();
+            } else if (backgroundImage) {
+                const bgImg = new Image();
+                await new Promise<void>((resolve, reject) => {
+                    bgImg.onload = () => resolve();
+                    bgImg.onerror = () => reject(new Error('Failed to load background image for filtering.'));
+                    bgImg.crossOrigin = "anonymous";
+                    bgImg.src = backgroundImage;
+                });
+                tempCtx.drawImage(bgImg, 0, 0, sceneWidth, sceneHeight);
+                sourceDataURL = tempCanvas.toDataURL();
+            }
+        } catch (error) {
+            console.error("Failed to load background media for export.", error);
+            alert(`Could not load the background for export. ${error instanceof Error ? error.message : ''}`);
+            return null;
+        }
 
-      // Prepare and draw SVG overlay
-      const svgData = await getCleanSvgString();
-      if (!svgData) {
-          alert("Failed to prepare the speech bubbles for export.");
-          return null;
-      }
+        if (sourceDataURL) {
+            const { brightness, contrast, saturate, temperature } = backgroundFilters;
+            const tempValue = temperature / 100; // range -1 to 1
+            const tempR = 1 + 0.15 * tempValue;
+            const tempB = 1 - 0.15 * tempValue;
+            const tempMatrix = `${tempR} 0 0 0 0 0 1 0 0 0 0 0 ${tempB} 0 0 0 0 0 1 0`;
 
-      const svgImg = new Image();
-      try {
-          await new Promise<void>((resolve, reject) => {
-              svgImg.onload = () => resolve();
-              svgImg.onerror = () => reject(new Error('Failed to load bubble SVG for export.'));
-              svgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-          });
-          ctx.drawImage(svgImg, 0, 0, sceneWidth, sceneHeight);
-      } catch (error) {
-          console.error("Failed to load SVG overlay for export.", error);
-          alert(`Could not load the speech bubbles for export. ${error instanceof Error ? error.message : ''}`);
-          return null;
-      }
+            const filterStyleString = [
+                `brightness(${brightness}%)`,
+                `contrast(${contrast}%)`,
+                `saturate(${saturate}%)`,
+                temperature !== 0 ? `url(#background-temperature-export)` : '',
+            ].filter(Boolean).join(' ');
 
-      return fullCanvas;
+            const filterSvgString = `
+                <svg width="${sceneWidth}" height="${sceneHeight}" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        ${temperature !== 0 ? `
+                        <filter id="background-temperature-export">
+                            <feColorMatrix type="matrix" values="${tempMatrix}" />
+                        </filter>
+                        ` : ''}
+                    </defs>
+                    <image href="${sourceDataURL}" width="100%" height="100%" style="filter: ${filterStyleString};" />
+                </svg>
+            `;
+
+            const filteredBgImg = new Image();
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    filteredBgImg.onload = () => resolve();
+                    filteredBgImg.onerror = () => reject(new Error('Failed to load filtered background SVG.'));
+                    filteredBgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(filterSvgString)));
+                });
+                ctx.drawImage(filteredBgImg, 0, 0, sceneWidth, sceneHeight);
+            } catch (error) {
+                console.error("Failed to apply filters via SVG.", error);
+                alert("An error occurred while applying background effects for export.");
+                return null;
+            }
+        }
+    }
+
+    // 2. Prepare and draw SVG overlay of bubbles
+    const svgData = await getCleanSvgString();
+    if (!svgData) {
+        if (bubbles.length > 0) alert("Failed to prepare the speech bubbles for export.");
+        return fullCanvas; 
+    }
+
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
+    const svgNode = svgDoc.documentElement;
+
+    svgNode.setAttribute('width', String(sceneWidth));
+    svgNode.setAttribute('height', String(sceneHeight));
+    svgNode.setAttribute('viewBox', `0 0 ${sceneWidth} ${sceneHeight}`);
+
+    const finalSvgData = new XMLSerializer().serializeToString(svgNode);
+
+    const svgImg = new Image();
+    try {
+        await new Promise<void>((resolve, reject) => {
+            svgImg.onload = () => resolve();
+            svgImg.onerror = () => reject(new Error('Failed to load bubble SVG for export.'));
+            svgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(finalSvgData)));
+        });
+        ctx.drawImage(svgImg, 0, 0, sceneWidth, sceneHeight);
+    } catch (error) {
+        console.error("Failed to load SVG overlay for export.", error);
+        alert(`Could not load the speech bubbles for export. ${error instanceof Error ? error.message : ''}`);
+        return null;
+    }
+
+    return fullCanvas;
   }
 
   const exportSceneAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
