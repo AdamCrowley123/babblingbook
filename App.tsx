@@ -384,6 +384,7 @@ const App: React.FC = () => {
     // Remove interactive/temporary elements
     svgNode.querySelectorAll('.drag-handles')?.forEach(el => el.remove());
     svgNode.querySelector('#export-frame-guide')?.remove();
+    svgNode.querySelector('#default-canvas-guide')?.remove();
     
     // Always remove background elements. 
     // - For transparent PNG export, they are not needed.

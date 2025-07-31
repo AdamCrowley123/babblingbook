@@ -916,6 +916,21 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
             </filter>
           )}
         </defs>
+
+        {!backgroundImage && !backgroundVideo && (
+            <rect
+                id="default-canvas-guide"
+                x="0"
+                y="0"
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.15)"
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+                style={{ pointerEvents: 'none' }}
+            />
+        )}
         
         {backgroundImage && !backgroundVideo && (
             <image

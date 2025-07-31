@@ -44,7 +44,7 @@ const Label: React.FC<{ htmlFor?: string; children: React.ReactNode }> = ({ html
   </label>
 );
 
-const FONT_SIZES = [8, 10, 12, 14, 16, 18, 24, 32, 48, 64];
+const FONT_SIZES = [8, 10, 12, 14, 16, 18, 24, 32, 48, 64, 72, 96, 120, 150];
 
 const RichTextEditor: React.FC<{ value: string; onChange: (value: string) => void }> = ({ value, onChange }) => {
     const editorRef = React.useRef<HTMLDivElement>(null);
@@ -377,7 +377,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, onIm
                                     {FONT_FAMILIES.map((font) => <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>)}
                                 </select>
                             </div>
-                            <Slider label="Default Font Size" value={bubbleProps.fontSize} min={10} max={72} onChange={(v) => onUpdate({ fontSize: v })} />
+                            <Slider label="Default Font Size" value={bubbleProps.fontSize} min={10} max={150} onChange={(v) => onUpdate({ fontSize: v })} />
                             <ColorInput label="Default Text Color" value={bubbleProps.textColor} onChange={(v) => onUpdate({ textColor: v })} />
                              <div>
                                 <Label>Text Align</Label>
