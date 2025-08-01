@@ -88,8 +88,8 @@ function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
 
 
 const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
-  text: 'Type <b>something</b> <i>here!</i>',
-  fontFamily: 'Comic Neue',
+  text: 'left panel: change text and bubble settings <br> right panel: add or delete balloon <br> add image or video. <br> have fun!',
+  fontFamily: 'Bangers',
   fontSize: 24,
   textColor: '#000000',
   textAlign: TextAlign.CENTER,
@@ -773,8 +773,11 @@ const App: React.FC = () => {
     <div className="flex flex-col md:flex-row h-full bg-stone-800 text-white font-sans">
       <header className="md:hidden p-4 bg-stone-900 border-b border-stone-700 flex justify-between items-center">
         <h1 className="text-2xl flex items-center" style={{fontFamily: 'Bangers, cursive'}}>
-          <img src="/logo.png" alt="Babbling Book Logo" className="h-8 mr-2" />
-          <span>Babbling Book</span>
+        <img
+          src="/logo.png"
+          alt="Babbling Book Logo"
+          className="max-w-full h-auto mr-2"
+        />
         </h1>
       </header>
       
@@ -795,8 +798,11 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col p-4 md:p-8 overflow-hidden">
         <div className="flex-shrink-0 flex justify-between items-center mb-4">
           <h1 className="hidden md:flex items-center text-4xl text-white" style={{fontFamily: 'Bangers, cursive'}}>
-            <img src="/logo.png" alt="Babbling Book Logo" className="h-10 mr-3" />
-            <span>Babbling Book</span>
+          <img
+            src="/logo.png"
+            alt="Babbling Book Logo"
+            className="max-w-full h-auto mr-2"
+          />
           </h1>
           <div className="flex items-center space-x-2 flex-wrap gap-y-2 justify-end">
              <div className="flex-grow sm:flex-grow-0">
