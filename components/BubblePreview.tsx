@@ -806,7 +806,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
     }
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: WheelEvent) => {
     if (isInteractingWithBubble) return;
     e.preventDefault();
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
@@ -825,8 +825,20 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
     const newY = mousePos.y - (mousePos.y - y) * actualZoomFactor;
 
     setViewBox(`${newX} ${newY} ${newW} ${newH}`);
-  };
+  }, [isInteractingWithBubble, viewBox, getSvgCoordinates, minViewBoxWidth, maxViewBoxWidth, setViewBox]);
   
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Use a manual event listener with { passive: false } to prevent console warnings
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
+
   const handlePanMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 1 || isInteractingWithBubble) return; // Middle mouse button
     e.preventDefault();
@@ -886,7 +898,6 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        onWheel={handleWheel}
         onMouseDown={handlePanMouseDown}
     >
       <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-stone-600"
