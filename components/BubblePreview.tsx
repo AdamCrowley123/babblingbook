@@ -140,7 +140,7 @@ const DraggableHandle: React.FC<{
     cx={position.x}
     cy={position.y}
     r="10"
-    fill="rgba(59, 130, 246, 0.8)"
+    fill="rgba(147, 51, 234, 0.8)"
     stroke="white"
     strokeWidth="2"
     cursor="move"
@@ -746,7 +746,7 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
     }
   }, [bubbles, initialBubbleState, handleMouseUp]);
     
-  const showHandles = !isInteractingWithBubble && !panningState.current;
+  const showHandles = !isDrawing && !panningState.current;
   const isDrawingMode = !!activeBubble?.isDrawingEnabled && activeBubble?.shape === ShapeType.FREEHAND && !isInteractingWithBubble && !panningState.current;
 
   const handleSvgMouseDown = (e: React.MouseEvent) => {
@@ -900,116 +900,122 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
         onDrop={handleDrop}
         onMouseDown={handlePanMouseDown}
     >
-      <svg ref={svgRef} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="max-w-full max-h-full bg-stone-600"
-        onMouseDown={handleSvgMouseDown}
-        onMouseMove={handleSvgMouseMove}
-        onMouseUp={handleSvgMouseUp}
-        onMouseLeave={handleSvgMouseUp}
-      >
-        <defs>
-          {bubbles.map(bubble => (
-            <React.Fragment key={`defs-${bubble.id}`}>
-              <clipPath id={`bubble-clip-${bubble.id}`}>
-                  <path d={getBubblePath(bubble)} />
-              </clipPath>
-              {bubble.bubbleShadow && (
-                <filter id={`bubble-shadow-${bubble.id}`} x="-50%" y="-50%" width="200%" height="200%">
-                  <feDropShadow 
-                    dx={bubble.bubbleShadowOffsetX} 
-                    dy={bubble.bubbleShadowOffsetY} 
-                    stdDeviation={bubble.bubbleShadowBlur / 2} 
-                    floodColor={bubble.bubbleShadowColor}
-                    floodOpacity="1"
-                  />
-                </filter>
-              )}
-            </React.Fragment>
-          ))}
-          {temperature !== 0 && (
-            <filter id="background-temperature">
-              <feColorMatrix type="matrix" values={tempMatrix} />
-            </filter>
+      <div className="relative w-full h-full" style={{ aspectRatio: '16 / 9' }}>
+        <svg
+          ref={svgRef}
+          viewBox={viewBox}
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full bg-stone-600"
+          onMouseDown={handleSvgMouseDown}
+          onMouseMove={handleSvgMouseMove}
+          onMouseUp={handleSvgMouseUp}
+          onMouseLeave={handleSvgMouseUp}
+        >
+          <defs>
+            {bubbles.map(bubble => (
+              <React.Fragment key={`defs-${bubble.id}`}>
+                <clipPath id={`bubble-clip-${bubble.id}`}>
+                    <path d={getBubblePath(bubble)} />
+                </clipPath>
+                {bubble.bubbleShadow && (
+                  <filter id={`bubble-shadow-${bubble.id}`} x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow 
+                      dx={bubble.bubbleShadowOffsetX} 
+                      dy={bubble.bubbleShadowOffsetY} 
+                      stdDeviation={bubble.bubbleShadowBlur / 2} 
+                      floodColor={bubble.bubbleShadowColor}
+                      floodOpacity="1"
+                    />
+                  </filter>
+                )}
+              </React.Fragment>
+            ))}
+            {temperature !== 0 && (
+              <filter id="background-temperature">
+                <feColorMatrix type="matrix" values={tempMatrix} />
+              </filter>
+            )}
+          </defs>
+
+          {!backgroundImage && !backgroundVideo && (
+              <rect
+                  id="default-canvas-guide"
+                  x="0"
+                  y="0"
+                  width={canvasDimensions.width}
+                  height={canvasDimensions.height}
+                  fill="none"
+                  stroke="rgba(255, 255, 255, 0.15)"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                  style={{ pointerEvents: 'none' }}
+              />
           )}
-        </defs>
+          
+          {backgroundImage && !backgroundVideo && (
+              <image
+                  id="background-image"
+                  href={backgroundImage}
+                  x="0"
+                  y="0"
+                  width={canvasDimensions.width}
+                  height={canvasDimensions.height}
+                  preserveAspectRatio="xMidYMid meet"
+                  style={{ filter: filterString }}
+              />
+          )}
+          
+          {backgroundVideo && (
+              <foreignObject id="background-video-container" x="0" y="0" width={canvasDimensions.width} height={canvasDimensions.height} style={{ filter: filterString }}>
+                  <video 
+                      ref={videoRef}
+                      src={backgroundVideo}
+                      playsInline
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+              </foreignObject>
+          )}
 
-        {!backgroundImage && !backgroundVideo && (
-            <rect
-                id="default-canvas-guide"
-                x="0"
-                y="0"
-                width={canvasDimensions.width}
-                height={canvasDimensions.height}
+          {isDrawing && currentDrawingPoints.length > 1 && (
+              <path
+                d={`M ${currentDrawingPoints.map(p => `${p.x} ${p.y}`).join(' L ')}`}
                 fill="none"
-                stroke="rgba(255, 255, 255, 0.15)"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
+                stroke="rgba(167, 139, 250, 0.7)"
+                strokeWidth="2"
+                strokeDasharray="4 4"
                 style={{ pointerEvents: 'none' }}
-            />
-        )}
-        
-        {backgroundImage && !backgroundVideo && (
-            <image
-                id="background-image"
-                href={backgroundImage}
-                x="0"
-                y="0"
-                width={canvasDimensions.width}
-                height={canvasDimensions.height}
-                preserveAspectRatio="xMidYMid meet"
-                style={{ filter: filterString }}
-            />
-        )}
-        
-        {backgroundVideo && (
-            <foreignObject id="background-video-container" x="0" y="0" width={canvasDimensions.width} height={canvasDimensions.height} style={{ filter: filterString }}>
-                <video 
-                    ref={videoRef}
-                    src={backgroundVideo}
-                    playsInline
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                />
-            </foreignObject>
-        )}
+              />
+          )}
 
-        {isDrawing && currentDrawingPoints.length > 1 && (
-            <path
-              d={`M ${currentDrawingPoints.map(p => `${p.x} ${p.y}`).join(' L ')}`}
-              fill="none"
-              stroke="rgba(167, 139, 250, 0.7)"
-              strokeWidth="2"
-              strokeDasharray="4 4"
-              style={{ pointerEvents: 'none' }}
-            />
-        )}
-
-        {bubbles.map(bubble => (
-            <BubbleGraphic
-              key={bubble.id}
-              bubble={bubble}
-              isActive={bubble.id === activeBubbleId}
-              showHandles={showHandles}
-              onActivate={onActivateBubble}
-              onInteractionStart={handleInteractionStart}
-            />
-        ))}
-        
-        {(backgroundImage || backgroundVideo) && showExportFrame && exportFrame && (
-            <g style={{ pointerEvents: 'none' }}>
-                <rect
-                    id="export-frame-guide"
-                    x={exportFrame.x}
-                    y={exportFrame.y}
-                    width={exportFrame.width}
-                    height={exportFrame.height}
-                    fill="none"
-                    stroke="#ff0000"
-                    strokeWidth="2"
-                    strokeOpacity="0.8"
-                    vectorEffect="non-scaling-stroke"
-                />
-            </g>
-        )}
-      </svg>
+          {bubbles.map(bubble => (
+              <BubbleGraphic
+                key={bubble.id}
+                bubble={bubble}
+                isActive={bubble.id === activeBubbleId}
+                showHandles={showHandles}
+                onActivate={onActivateBubble}
+                onInteractionStart={handleInteractionStart}
+              />
+          ))}
+          
+          {(backgroundImage || backgroundVideo) && showExportFrame && exportFrame && (
+              <g style={{ pointerEvents: 'none' }}>
+                  <rect
+                      id="export-frame-guide"
+                      x={exportFrame.x}
+                      y={exportFrame.y}
+                      width={exportFrame.width}
+                      height={exportFrame.height}
+                      fill="none"
+                      stroke="#ff0000"
+                      strokeWidth="2"
+                      strokeOpacity="0.8"
+                      vectorEffect="non-scaling-stroke"
+                  />
+              </g>
+          )}
+        </svg>
+      </div>
       {isDraggingOver && (
         <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center border-4 border-dashed border-stone-400 rounded-lg pointer-events-none z-10 transition-opacity">
             <UploadIcon className="w-16 h-16 text-white mb-4" />
