@@ -25,6 +25,19 @@ const InfoPanel: React.FC = () => {
           alt="Visitor count"
           className="mx-auto"
         />
+
+          {/* Pulsante FramingBook centrato */}
+        <div className="flex justify-center mt-4">
+          <a
+            href="https://framingbook.netlify.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-yellow-500 text-white font-bold py-2 px-4 rounded hover:bg-yellow-600 transition-colors"
+          >
+            FramingBook
+          </a>
+        </div>
+        
       </div>
     </div>
   );
