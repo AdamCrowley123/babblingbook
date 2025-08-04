@@ -11,7 +11,7 @@ export const FONT_FAMILIES = [
   'Chewy',
   'Yomogi',
   'Arial',
-  'Verdana',
+  'Patrick Hand',
 ];
 
 export const SHAPE_OPTIONS = [
