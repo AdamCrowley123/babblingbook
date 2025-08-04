@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { BubbleProps, TailProps } from '../types';
 import { ShapeType, TailType } from '../types';
@@ -7,6 +8,7 @@ import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import EmojiIcon from './icons/EmojiIcon';
 import AddIcon from './icons/AddIcon';
 import ResetIcon from './icons/ResetIcon';
+import ChevronDownIcon from './icons/ChevronDownIcon';
 
 
 interface ControlPanelProps {
@@ -180,7 +182,7 @@ const ColorInput: React.FC<{ label: string; value: string; onChange: (value: str
 const Slider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = 'px' }) => (
     <div>
       <Label htmlFor={label}>{label}: {value}{unit}</Label>
-      <input id={label} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(step === 1 ? parseInt(e.target.value) : parseFloat(e.target.value))} className="w-full mt-1 h-2 bg-stone-700 rounded-lg appearance-none cursor-pointer"/>
+      <input id={label} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))} className="w-full mt-1 h-2 bg-stone-700 rounded-lg appearance-none cursor-pointer"/>
     </div>
 );
 
@@ -210,6 +212,7 @@ const ShapeIcon: React.FC<{shape: ShapeType}> = ({shape}) => {
 
 const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, nextTailId }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
+  const [isRandomizerOpen, setIsRandomizerOpen] = useState(false);
   
     const handleAddTail = () => {
         const baseTail = bubbleProps.tails[bubbleProps.tails.length - 1] || {
@@ -279,6 +282,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, next
                                 </div>
                             </div>
                             <Slider label="Line Spacing" value={bubbleProps.lineHeight} min={0.8} max={3} step={0.1} onChange={(v) => onUpdate({ lineHeight: v })} unit="" />
+                            <Slider label="Letter Spacing" value={bubbleProps.letterSpacing ?? 0} min={-5} max={20} step={0.5} onChange={(v) => onUpdate({ letterSpacing: v })} unit="px" />
                         </Section>
                         <Section title="Text Effects">
                              <div className="space-y-3 p-3 bg-stone-800 rounded-lg">
@@ -332,6 +336,34 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, next
                                     <ResetIcon className="w-4 h-4" />
                                     <span>Reset Transform</span>
                                 </button>
+                            </div>
+                        </Section>
+                        <Section title="Letter Randomizer">
+                            <div className="p-3 bg-stone-800 rounded-lg">
+                                <button
+                                    onClick={() => setIsRandomizerOpen(prev => !prev)}
+                                    className="w-full flex justify-between items-center text-left font-medium text-stone-300"
+                                    aria-expanded={isRandomizerOpen}
+                                    aria-controls="letter-randomizer-panel"
+                                >
+                                    <span>Effects</span>
+                                    <ChevronDownIcon className={`w-5 h-5 text-stone-400 transform transition-transform duration-200 ${isRandomizerOpen ? '' : '-rotate-90'}`} />
+                                </button>
+                                {isRandomizerOpen && (
+                                    <div id="letter-randomizer-panel" className="mt-4 pt-4 border-t border-stone-700 space-y-4 animate-fade-in-down">
+                                        <Slider label="Scale" value={bubbleProps.randomScale ?? 0} min={0} max={0.5} step={0.01} onChange={(v) => onUpdate({ randomScale: v })} unit="" />
+                                        <Slider label="Position X" value={bubbleProps.randomX ?? 0} min={0} max={20} onChange={(v) => onUpdate({ randomX: v })} unit="px" />
+                                        <Slider label="Position Y" value={bubbleProps.randomY ?? 0} min={0} max={20} onChange={(v) => onUpdate({ randomY: v })} unit="px" />
+                                        <Slider label="Rotation" value={bubbleProps.randomRotation ?? 0} min={0} max={45} onChange={(v) => onUpdate({ randomRotation: v })} unit="°" />
+                                        <button
+                                            onClick={() => onUpdate({ randomScale: 0, randomX: 0, randomY: 0, randomRotation: 0 })}
+                                            className="w-full mt-2 flex items-center justify-center space-x-2 px-4 py-2 bg-stone-600 hover:bg-stone-500 rounded-md transition-colors text-sm"
+                                        >
+                                            <ResetIcon className="w-4 h-4" />
+                                            <span>Reset Randomness</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </Section>
                     </div>

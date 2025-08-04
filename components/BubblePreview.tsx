@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { ShapeType, BorderStyle, TailType } from '../types';
+import { ShapeType, BorderStyle, TailType, TextAlign } from '../types';
 import type { BubbleProps, TailPosition, TailProps, BackgroundFilters, ExportFrame } from '../types';
 import UploadIcon from './icons/UploadIcon';
 
@@ -109,6 +109,16 @@ function createSmoothPath(points: {x:number, y:number}[], tension: number, close
     return path;
 }
 //#endregion
+
+// A simple pseudo-random number generator for deterministic randomness
+function mulberry32(a: number) {
+    return function() {
+      var t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
 
 interface BubblePreviewProps {
   bubbles: BubbleProps[];
@@ -340,54 +350,97 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
   const bubblePath = useMemo(() => getBubblePath(bubble), [bubble]);
   const { tailVisible, shape, fillColor, borderColor, borderWidth, bubbleShadow, id, tails } = bubble;
   
-  const textStyle: React.CSSProperties = {
+  const randomizedHtml = useMemo(() => {
+    const { text, randomScale, randomX, randomY, randomRotation, id } = bubble;
+    if (randomScale === 0 && randomX === 0 && randomY === 0 && randomRotation === 0) {
+        return text; // No randomization, return original HTML
+    }
+
+    const container = document.createElement('div');
+    container.innerHTML = text;
+    let charIndex = 0;
+
+    const traverse = (node: Node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const textContent = node.textContent || '';
+            if (textContent.trim().length === 0) return;
+
+            const fragment = document.createDocumentFragment();
+            for (const char of textContent) {
+                if (char.trim() === '') {
+                    fragment.appendChild(document.createTextNode(char));
+                } else {
+                    const rand = mulberry32(id + charIndex * 137); // Seed per char
+                    
+                    const scale = 1 + (rand() - 0.5) * 2 * randomScale;
+                    const x = (rand() - 0.5) * 2 * randomX;
+                    const y = (rand() - 0.5) * 2 * randomY;
+                    const rot = (rand() - 0.5) * 2 * randomRotation;
+
+                    const span = document.createElement('span');
+                    span.textContent = char;
+                    span.style.display = 'inline-block';
+                    span.style.transform = `translate(${x}px, ${y}px) scale(${scale}) rotate(${rot}deg)`;
+                    span.style.transition = 'transform 0.1s ease-out';
+                    
+                    fragment.appendChild(span);
+                    charIndex++;
+                }
+            }
+            node.parentNode?.replaceChild(fragment, node);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            Array.from(node.childNodes).forEach(traverse);
+        }
+    };
+
+    traverse(container);
+    return container.innerHTML;
+  }, [bubble.text, bubble.randomScale, bubble.randomX, bubble.randomY, bubble.randomRotation, bubble.id]);
+
+  const flexAlignMap: { [key in TextAlign]: 'flex-start' | 'center' | 'flex-end' } = {
+    left: 'flex-start',
+    center: 'center',
+    right: 'flex-end',
+  };
+
+  const centeringStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
+    alignItems: flexAlignMap[bubble.textAlign],
     padding: '20px',
     boxSizing: 'border-box',
-    color: bubble.textColor,
-    fontSize: `${bubble.fontSize}px`,
-    textAlign: bubble.textAlign,
-    lineHeight: bubble.lineHeight,
-    wordBreak: 'break-word',
-    whiteSpace: 'pre-wrap',
     pointerEvents: 'none',
     transform: `rotate(${bubble.textRotation}deg) scale(${bubble.textScaleX}, ${bubble.textScaleY})`,
     transformOrigin: 'center',
   };
 
-  const textShadows: string[] = [];
+  const textBlockStyle: React.CSSProperties = {
+    color: bubble.textColor,
+    fontSize: `${bubble.fontSize}px`,
+    textAlign: bubble.textAlign,
+    lineHeight: bubble.lineHeight,
+    letterSpacing: `${bubble.letterSpacing ?? 0}px`,
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+  };
 
-  // Create outline using multiple text-shadows. This technique creates a stroke
-  // that expands outwards, unlike -webkit-text-stroke which is centered.
+  const textShadows: string[] = [];
   if (bubble.textOutline && bubble.textOutlineWidth > 0) {
     const w = bubble.textOutlineWidth;
     const c = bubble.textOutlineColor;
-    // Using 8 points for a solid outline effect.
-    textShadows.push(`${-w}px ${-w}px 0 ${c}`);
-    textShadows.push(`0px ${-w}px 0 ${c}`);
-    textShadows.push(`${w}px ${-w}px 0 ${c}`);
-    textShadows.push(`${-w}px 0px 0 ${c}`);
-    textShadows.push(`${w}px 0px 0 ${c}`);
-    textShadows.push(`${-w}px ${w}px 0 ${c}`);
-    textShadows.push(`0px ${w}px 0 ${c}`);
-    textShadows.push(`${w}px ${w}px 0 ${c}`);
+    textShadows.push(`${-w}px ${-w}px 0 ${c}`, `0px ${-w}px 0 ${c}`, `${w}px ${-w}px 0 ${c}`, `${-w}px 0px 0 ${c}`, `${w}px 0px 0 ${c}`, `${-w}px ${w}px 0 ${c}`, `0px ${w}px 0 ${c}`, `${w}px ${w}px 0 ${c}`);
   }
-
-  // Add the regular drop shadow, it will be layered on top of the outline.
   if (bubble.textShadow) {
     textShadows.push(`${bubble.textShadowOffsetX}px ${bubble.textShadowOffsetY}px ${bubble.textShadowBlur}px ${bubble.textShadowColor}`);
   }
-
   if (textShadows.length > 0) {
-    textStyle.textShadow = textShadows.join(', ');
+    textBlockStyle.textShadow = textShadows.join(', ');
   }
 
   const borderDashArray = getBorderStyleArray(bubble.borderStyle, borderWidth);
-
   const isFreehandEmpty = bubble.shape === ShapeType.FREEHAND && (!bubble.freehandPoints || bubble.freehandPoints.length === 0);
 
   return (
@@ -398,63 +451,25 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
       >
         {bubble.bubbleVisible && !isFreehandEmpty && (
           <g filter={bubbleShadow ? `url(#bubble-shadow-${id})` : 'none'}>
-              {/* Main Bubble Shape: Drawn first */}
-              <path
-                  d={bubblePath}
-                  fill={fillColor}
-                  stroke={borderColor}
-                  strokeWidth={borderWidth}
-                  strokeDasharray={borderDashArray}
-                  strokeLinejoin="round"
-              />
-
-              {/* Regular Tails: Drawn on top of the main bubble for a seamless join */}
+              <path d={bubblePath} fill={fillColor} stroke={borderColor} strokeWidth={borderWidth} strokeDasharray={borderDashArray} strokeLinejoin="round" />
               {tailVisible && shape !== ShapeType.THOUGHT && tails.map(tail => {
-                  const pathData = tail.type === TailType.LIGHTNING
-                      ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs)
-                      : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
+                  const pathData = tail.type === TailType.LIGHTNING ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs) : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
                   return (
                       <g key={`tail-group-${tail.id}`}>
-                          {/* Tail fill covers the main bubble's stroke at the junction */}
                           <path d={pathData.fillPath} fill={fillColor} stroke="none" />
-                          {/* Tail stroke is drawn on top of its own fill */}
-                          <path
-                              d={pathData.strokePath}
-                              fill="none"
-                              stroke={borderColor}
-                              strokeWidth={borderWidth}
-                              strokeDasharray={borderDashArray}
-                              strokeLinejoin="round"
-                              strokeLinecap="round"
-                          />
+                          <path d={pathData.strokePath} fill="none" stroke={borderColor} strokeWidth={borderWidth} strokeDasharray={borderDashArray} strokeLinejoin="round" strokeLinecap="round" />
                       </g>
                   );
               })}
-
-              {/* Thought tails are self-contained and render correctly on top */}
               {tailVisible && shape === ShapeType.THOUGHT && tails.map(tail => {
                   const tailStrokeWidth = borderWidth / 2;
                   const tailBorderDashArray = getBorderStyleArray(bubble.borderStyle, tailStrokeWidth);
-
                   return (
                     <g key={tail.id}>
                         {getThoughtTailPoints(tail).map((p, i, arr) => {
-                          // Make the base size larger by reducing the divisor.
                           const dynamicBaseRadius = Math.min(bubble.width, bubble.height) / 12.0;
-                          // Use a non-linear scale to make the smaller bubbles at the tail's tip more visible.
                           const scale = 0.4 + 0.6 * (i / (arr.length - 1));
-                          return (
-                            <circle
-                                key={i}
-                                cx={p.x}
-                                cy={p.y}
-                                r={dynamicBaseRadius * scale}
-                                fill={fillColor}
-                                stroke={borderColor}
-                                strokeWidth={tailStrokeWidth}
-                                strokeDasharray={tailBorderDashArray}
-                            />
-                          );
+                          return (<circle key={i} cx={p.x} cy={p.y} r={dynamicBaseRadius * scale} fill={fillColor} stroke={borderColor} strokeWidth={tailStrokeWidth} strokeDasharray={tailBorderDashArray} />);
                         })}
                     </g>
                   );
@@ -463,16 +478,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
         )}
 
         {(!bubble.bubbleVisible || isFreehandEmpty) && (
-          <rect
-            x={bubble.x - bubble.width / 2}
-            y={bubble.y - bubble.height / 2}
-            width={bubble.width}
-            height={bubble.height}
-            fill="transparent"
-            stroke={isActive && isFreehandEmpty ? 'rgba(255, 255, 255, 0.3)' : 'transparent'}
-            strokeWidth="1"
-            strokeDasharray="4 4"
-          />
+          <rect x={bubble.x - bubble.width / 2} y={bubble.y - bubble.height / 2} width={bubble.width} height={bubble.height} fill="transparent" stroke={isActive && isFreehandEmpty ? 'rgba(255, 255, 255, 0.3)' : 'transparent'} strokeWidth="1" strokeDasharray="4 4" />
         )}
 
         <foreignObject 
@@ -483,7 +489,9 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
           clipPath={!isFreehandEmpty ? `url(#bubble-clip-${bubble.id})` : 'none'}
           style={{pointerEvents: 'none'}}
         >
-          <div style={textStyle} dangerouslySetInnerHTML={{ __html: bubble.text }} />
+          <div style={centeringStyle}>
+            <div style={textBlockStyle} dangerouslySetInnerHTML={{ __html: randomizedHtml }} />
+          </div>
         </foreignObject>
       </g>
       
@@ -495,16 +503,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
 
       {isActive && !isFreehandEmpty && (
         <g className="drag-handles">
-            <circle
-                cx={bubble.x}
-                cy={bubble.y}
-                r="8"
-                fill="rgba(239, 68, 68, 0.9)"
-                stroke="white"
-                strokeWidth="2"
-                cursor="move"
-                onMouseDown={(e) => onInteractionStart(e, 'bubble', null)}
-              />
+            <circle cx={bubble.x} cy={bubble.y} r="8" fill="rgba(239, 68, 68, 0.9)" stroke="white" strokeWidth="2" cursor="move" onMouseDown={(e) => onInteractionStart(e, 'bubble', null)} />
             {bubble.tailVisible && tails.map(tail => (
                 <g key={`handle-${tail.id}`}>
                     <DraggableHandle position={tail.p1} onMouseDown={(e) => onInteractionStart(e, 'tail', {id: tail.id, handle: 'p1'})} />

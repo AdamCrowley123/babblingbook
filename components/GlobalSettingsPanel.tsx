@@ -5,6 +5,7 @@ import TrashIcon from './icons/TrashIcon';
 import AddIcon from './icons/AddIcon';
 import ResetIcon from './icons/ResetIcon';
 import VideoIcon from './icons/VideoIcon';
+import ChevronDownIcon from './icons/ChevronDownIcon';
 
 interface GlobalSettingsPanelProps {
   onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -54,30 +55,13 @@ const Toggle: React.FC<{ label: string; checked: boolean; onChange: (checked: bo
     </div>
 );
 
-const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    width="24" 
-    height="24" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="m6 9 6 6 6-6"/>
-  </svg>
-);
-
 const CompactSlider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = 'px' }) => (
     <div>
       <div className="flex justify-between items-baseline mb-1">
         <label htmlFor={`compact-slider-${label}`} className="text-xs font-medium text-stone-300">{label}</label>
         <span className="text-xs font-mono text-stone-400">{value}{unit}</span>
       </div>
-      <input id={`compact-slider-${label}`} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(step === 1 ? parseInt(e.target.value) : parseFloat(e.target.value))} className="w-full mt-0 h-1.5 bg-stone-700 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+      <input id={`compact-slider-${label}`} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))} className="w-full mt-0 h-1.5 bg-stone-700 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
     </div>
 );
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { BubbleProps, TailProps, BackgroundFilters, ExportFrame } from './types';
 import { ShapeType, BorderStyle, TextAlign, TailType } from './types';
@@ -26,7 +27,7 @@ const MAX_ZOOM_PERCENT = 500;
 
 
 // Path simplification utility, moved here to be used in handleUpdate
-function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
+function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}): number {
     let x = p1.x;
     let y = p1.y;
     let dx = p2.x - x;
@@ -45,14 +46,14 @@ function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:
     dy = p.y - y;
     return dx * dx + dy * dy;
 }
-function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
+function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number): {x:number, y:number}[] {
     if (points.length < 2) return points;
     let len = points.length;
     let markers = new Uint8Array(len);
     let first = 0;
     let last = len - 1;
     let stack: number[] = [];
-    let newPoints = [];
+    let newPoints: {x:number, y:number}[] = [];
     let i, maxSqDist, sqDist, index;
 
     markers[first] = markers[last] = 1;
@@ -94,6 +95,7 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   textColor: '#000000',
   textAlign: TextAlign.CENTER,
   lineHeight: 1.3,
+  letterSpacing: 0,
   shape: ShapeType.OVAL,
   fillColor: '#FFFFFF',
   borderColor: '#000000',
@@ -138,6 +140,10 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   freehandSmoothness: 0.8,
   freehandSimplification: 1.5,
   isDrawingEnabled: false,
+  randomScale: 0,
+  randomX: 0,
+  randomY: 0,
+  randomRotation: 0,
 };
 
 const INITIAL_FILTERS: BackgroundFilters = {
@@ -147,7 +153,7 @@ const INITIAL_FILTERS: BackgroundFilters = {
   temperature: 0,
 };
 
-const App: React.FC = () => {
+const App = (): React.ReactElement => {
   const [bubbles, setBubbles] = useState<BubbleProps[]>([{ ...INITIAL_PROPS, id: 1 }]);
   const [activeBubbleId, setActiveBubbleId] = useState<number>(1);
   const nextId = useRef(2);
@@ -172,6 +178,9 @@ const App: React.FC = () => {
   const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_CANVAS_DIMENSIONS.width} ${INITIAL_CANVAS_DIMENSIONS.height}`);
 
   const bubbleForPanel = bubbles.find(b => b.id === activeBubbleId) || bubbles[0];
+
+  const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
+  const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
 
   const handleUpdate = useCallback((updates: Partial<BubbleProps>) => {
     setBubbles(prevBubbles =>
@@ -445,7 +454,7 @@ const App: React.FC = () => {
     };
   }, []);
   
-  const triggerDownload = (href: string, filename: string) => {
+  const triggerDownload = useCallback((href: string, filename: string) => {
       const link = document.createElement('a');
       link.href = href;
       link.download = filename;
@@ -453,7 +462,7 @@ const App: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(href);
-  };
+  }, []);
 
   const getCleanSvgString = useCallback(async (): Promise<string> => {
     if (!svgRef.current) return '';
@@ -513,8 +522,11 @@ const App: React.FC = () => {
                 }
             });
 
-            for (const { originalUrl, dataUri } of await Promise.all(await Promise.all(embeddedFontPromises))) {
-                if (dataUri) cssText = cssText.replace(originalUrl, dataUri);
+            const fontData = await Promise.all(embeddedFontPromises);
+            for (const { originalUrl, dataUri } of fontData) {
+                if (dataUri) {
+                    cssText = cssText.replace(originalUrl, dataUri);
+                }
             }
             finalCss = cssText;
         }
@@ -532,7 +544,7 @@ const App: React.FC = () => {
   }, [bubbles]);
 
 
-  const handleExportBubblesPNG = async () => {
+  const handleExportBubblesPNG = useCallback(async () => {
     const svgData = await getCleanSvgString();
     if (!svgData) return;
 
@@ -577,9 +589,9 @@ const App: React.FC = () => {
         console.error(`Failed to load SVG for bubble export as PNG`, error);
         alert(`Sorry, there was an error exporting the bubble. ${error instanceof Error ? error.message : ''}`);
     }
-  };
+  }, [getCleanSvgString, backgroundImage, backgroundVideo, exportFrame, canvasDimensions, triggerDownload, exportFilename]);
 
-  const getFullSceneAsCanvas = async (): Promise<HTMLCanvasElement | null> => {
+  const getFullSceneAsCanvas = useCallback(async (): Promise<HTMLCanvasElement | null> => {
     const { width: sceneWidth, height: sceneHeight } = canvasDimensions;
     const fullCanvas = document.createElement('canvas');
     fullCanvas.width = sceneWidth;
@@ -694,9 +706,9 @@ const App: React.FC = () => {
     }
 
     return fullCanvas;
-  }
+  }, [canvasDimensions, backgroundImage, backgroundVideo, backgroundFilters, getCleanSvgString, bubbles]);
 
-  const exportSceneAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
+  const exportSceneAsRaster = useCallback(async (format: 'png' | 'jpeg' | 'webp') => {
     const hasBackground = backgroundImage || backgroundVideo;
     if (!hasBackground || !exportFrame) {
       alert("Please upload a background image or video first.");
@@ -729,12 +741,9 @@ const App: React.FC = () => {
     const mimeType = `image/${format}`;
     const dataUrl = croppedCanvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
     triggerDownload(dataUrl, `${exportFilename || 'comic-scene'}.${format}`);
-  };
+  }, [backgroundImage, backgroundVideo, exportFrame, getFullSceneAsCanvas, triggerDownload, exportFilename]);
   
-  const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
-  const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
-
-  const handleZoom = (factor: number) => {
+  const handleZoom = useCallback((factor: number) => {
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
     let newW = w * factor;
 
@@ -747,9 +756,9 @@ const App: React.FC = () => {
     const newX = x + (w - newW) / 2;
     const newY = y + (h - newH) / 2;
     setViewBox(`${newX} ${newY} ${newW} ${newH}`);
-  };
+  }, [viewBox, MIN_VIEWBOX_WIDTH, MAX_VIEWBOX_WIDTH, setViewBox]);
 
-  const handlePan = (direction: 'up' | 'down' | 'left' | 'right') => {
+  const handlePan = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
     const panAmount = w * 0.1; // Pan by 10% of the current view width
     let newX = x, newY = y;
@@ -760,7 +769,7 @@ const App: React.FC = () => {
       case 'right': newX += panAmount; break;
     }
     setViewBox(`${newX} ${newY} ${w} ${h}`);
-  };
+  }, [viewBox, setViewBox]);
   
   const currentViewBoxWidth = parseFloat(viewBox.split(' ')[2]);
   const zoomPercentage = Math.round((canvasDimensions.width / currentViewBoxWidth) * 100);
