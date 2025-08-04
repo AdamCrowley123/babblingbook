@@ -422,7 +422,6 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
     fontSize: `${bubble.fontSize}px`,
     textAlign: bubble.textAlign,
     lineHeight: bubble.lineHeight,
-    letterSpacing: `${bubble.letterSpacing ?? 0}px`,
     wordBreak: 'break-word',
     whiteSpace: 'pre-wrap',
   };
@@ -489,9 +488,9 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
           clipPath={!isFreehandEmpty ? `url(#bubble-clip-${bubble.id})` : 'none'}
           style={{pointerEvents: 'none'}}
         >
-          <div style={centeringStyle}>
-            <div style={textBlockStyle} dangerouslySetInnerHTML={{ __html: randomizedHtml }} />
-          </div>
+            <div style={centeringStyle}>
+                <div style={textBlockStyle} dangerouslySetInnerHTML={{ __html: randomizedHtml }} />
+            </div>
         </foreignObject>
       </g>
       

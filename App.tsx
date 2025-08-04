@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { BubbleProps, TailProps, BackgroundFilters, ExportFrame } from './types';
 import { ShapeType, BorderStyle, TextAlign, TailType } from './types';
@@ -95,7 +94,6 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   textColor: '#000000',
   textAlign: TextAlign.CENTER,
   lineHeight: 1.3,
-  letterSpacing: 0,
   shape: ShapeType.OVAL,
   fillColor: '#FFFFFF',
   borderColor: '#000000',
@@ -178,9 +176,6 @@ const App = (): React.ReactElement => {
   const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_CANVAS_DIMENSIONS.width} ${INITIAL_CANVAS_DIMENSIONS.height}`);
 
   const bubbleForPanel = bubbles.find(b => b.id === activeBubbleId) || bubbles[0];
-
-  const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
-  const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
 
   const handleUpdate = useCallback((updates: Partial<BubbleProps>) => {
     setBubbles(prevBubbles =>
@@ -743,6 +738,9 @@ const App = (): React.ReactElement => {
     triggerDownload(dataUrl, `${exportFilename || 'comic-scene'}.${format}`);
   }, [backgroundImage, backgroundVideo, exportFrame, getFullSceneAsCanvas, triggerDownload, exportFilename]);
   
+  const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
+  const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
+
   const handleZoom = useCallback((factor: number) => {
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
     let newW = w * factor;

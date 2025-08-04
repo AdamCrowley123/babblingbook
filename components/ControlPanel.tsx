@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { BubbleProps, TailProps } from '../types';
 import { ShapeType, TailType } from '../types';
@@ -282,7 +281,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, next
                                 </div>
                             </div>
                             <Slider label="Line Spacing" value={bubbleProps.lineHeight} min={0.8} max={3} step={0.1} onChange={(v) => onUpdate({ lineHeight: v })} unit="" />
-                            <Slider label="Letter Spacing" value={bubbleProps.letterSpacing ?? 0} min={-5} max={20} step={0.5} onChange={(v) => onUpdate({ letterSpacing: v })} unit="px" />
                         </Section>
                         <Section title="Text Effects">
                              <div className="space-y-3 p-3 bg-stone-800 rounded-lg">
