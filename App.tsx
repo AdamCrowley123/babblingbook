@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { BubbleProps, TailProps, BackgroundFilters, ExportFrame } from './types';
 import { ShapeType, BorderStyle, TextAlign, TailType } from './types';
@@ -26,7 +27,7 @@ const MAX_ZOOM_PERCENT = 500;
 
 
 // Path simplification utility, moved here to be used in handleUpdate
-function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}): number {
+function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
     let x = p1.x;
     let y = p1.y;
     let dx = p2.x - x;
@@ -45,14 +46,14 @@ function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:
     dy = p.y - y;
     return dx * dx + dy * dy;
 }
-function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number): {x:number, y:number}[] {
+function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
     if (points.length < 2) return points;
     let len = points.length;
     let markers = new Uint8Array(len);
     let first = 0;
     let last = len - 1;
     let stack: number[] = [];
-    let newPoints: {x:number, y:number}[] = [];
+    let newPoints = [];
     let i, maxSqDist, sqDist, index;
 
     markers[first] = markers[last] = 1;
@@ -94,6 +95,7 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   textColor: '#000000',
   textAlign: TextAlign.CENTER,
   lineHeight: 1.3,
+  letterSpacing: 0,
   shape: ShapeType.OVAL,
   fillColor: '#FFFFFF',
   borderColor: '#000000',
@@ -138,10 +140,9 @@ const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
   freehandSmoothness: 0.8,
   freehandSimplification: 1.5,
   isDrawingEnabled: false,
-  randomScale: 0,
-  randomX: 0,
-  randomY: 0,
-  randomRotation: 0,
+  charZoomRandomness: 0,
+  charYRandomness: 0,
+  charRotationRandomness: 0,
 };
 
 const INITIAL_FILTERS: BackgroundFilters = {
@@ -151,7 +152,16 @@ const INITIAL_FILTERS: BackgroundFilters = {
   temperature: 0,
 };
 
-const App = (): React.ReactElement => {
+// Helper to Base64 encode UTF-8 strings for cross-browser compatibility.
+const b64EncodeUnicode = (str: string) => {
+    // first we use encodeURIComponent to get percent-encoded UTF-8,
+    // then we convert the percent encodings into raw bytes which can be fed to btoa.
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+        (match, p1) => String.fromCharCode(Number('0x' + p1))
+    ));
+}
+
+const App: React.FC = () => {
   const [bubbles, setBubbles] = useState<BubbleProps[]>([{ ...INITIAL_PROPS, id: 1 }]);
   const [activeBubbleId, setActiveBubbleId] = useState<number>(1);
   const nextId = useRef(2);
@@ -167,6 +177,7 @@ const App = (): React.ReactElement => {
   const [showExportFrame, setShowExportFrame] = useState<boolean>(true);
   const [exportFilename, setExportFilename] = useState<string>('comic-scene');
   const [exportFrame, setExportFrame] = useState<ExportFrame | null>(null);
+  const [handleSize, setHandleSize] = useState<number>(1);
 
   const [canvasDimensions, setCanvasDimensions] = useState(INITIAL_CANVAS_DIMENSIONS);
   const backgroundUrlRef = useRef<string | null>(null);
@@ -449,7 +460,7 @@ const App = (): React.ReactElement => {
     };
   }, []);
   
-  const triggerDownload = useCallback((href: string, filename: string) => {
+  const triggerDownload = (href: string, filename: string) => {
       const link = document.createElement('a');
       link.href = href;
       link.download = filename;
@@ -457,21 +468,16 @@ const App = (): React.ReactElement => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(href);
-  }, []);
+  };
 
   const getCleanSvgString = useCallback(async (): Promise<string> => {
     if (!svgRef.current) return '';
 
     const svgNode = svgRef.current.cloneNode(true) as SVGSVGElement;
     
-    // Remove interactive/temporary elements
     svgNode.querySelectorAll('.drag-handles')?.forEach(el => el.remove());
-    svgNode.querySelector('#export-frame-guide')?.parentElement?.remove(); // Remove the <g> wrapper for the frame
+    svgNode.querySelector('#export-frame-guide')?.parentElement?.remove();
     svgNode.querySelector('#default-canvas-guide')?.remove();
-    
-    // Always remove background elements. 
-    // - For transparent PNG export, they are not needed.
-    // - For scene export, they are drawn separately on the canvas.
     svgNode.querySelector('#background-image')?.remove();
     svgNode.querySelector('#background-video-container')?.remove();
     svgNode.querySelector('#background-sharpen')?.remove();
@@ -481,8 +487,6 @@ const App = (): React.ReactElement => {
     
     const foreignObjects = svgNode.querySelectorAll('foreignObject');
     foreignObjects.forEach((fo, index) => {
-        // In this app, only bubble text uses foreignObjects, so this is safe.
-        // If other foreignObjects are added, this query would need to be more specific.
         const bubble = bubbles[index];
         if (bubble) {
             const div = fo.querySelector('div');
@@ -517,11 +521,8 @@ const App = (): React.ReactElement => {
                 }
             });
 
-            const fontData = await Promise.all(embeddedFontPromises);
-            for (const { originalUrl, dataUri } of fontData) {
-                if (dataUri) {
-                    cssText = cssText.replace(originalUrl, dataUri);
-                }
+            for (const { originalUrl, dataUri } of await Promise.all(await Promise.all(embeddedFontPromises))) {
+                if (dataUri) cssText = cssText.replace(originalUrl, dataUri);
             }
             finalCss = cssText;
         }
@@ -539,54 +540,53 @@ const App = (): React.ReactElement => {
   }, [bubbles]);
 
 
-  const handleExportBubblesPNG = useCallback(async () => {
-    const svgData = await getCleanSvgString();
-    if (!svgData) return;
-
-    const hasBackground = !!backgroundImage || !!backgroundVideo;
-    const exportWidth = hasBackground && exportFrame ? exportFrame.width : canvasDimensions.width;
-    const exportHeight = hasBackground && exportFrame ? exportFrame.height : canvasDimensions.height;
-    const exportViewBox = hasBackground && exportFrame 
-      ? `${exportFrame.x} ${exportFrame.y} ${exportFrame.width} ${exportFrame.height}`
-      : `0 0 ${canvasDimensions.width} ${canvasDimensions.height}`;
-
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
-    const svgNode = svgDoc.documentElement;
-    
-    svgNode.setAttribute('viewBox', exportViewBox);
-    svgNode.setAttribute('width', String(exportWidth));
-    svgNode.setAttribute('height', String(exportHeight));
-    
-    const finalSvgData = new XMLSerializer().serializeToString(svgNode);
-
-    const canvas = document.createElement('canvas');
-    const scaleFactor = 1; // For higher resolution output
-    canvas.width = exportWidth * scaleFactor;
-    canvas.height = exportHeight * scaleFactor;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const svgImg = new Image();
-    const svgPromise = new Promise<void>((resolve, reject) => {
-        svgImg.onload = () => resolve();
-        svgImg.onerror = () => reject(new Error('Failed to load bubble SVG for export.'));
-        svgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(finalSvgData)));
-    });
-
+  const handleExportBubblesPNG = async () => {
     try {
-        await svgPromise;
-        ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/png');
-        triggerDownload(dataUrl, `${exportFilename || 'speech-bubbles'}.png`);
-    } catch (error) {
-        console.error(`Failed to load SVG for bubble export as PNG`, error);
-        alert(`Sorry, there was an error exporting the bubble. ${error instanceof Error ? error.message : ''}`);
-    }
-  }, [getCleanSvgString, backgroundImage, backgroundVideo, exportFrame, canvasDimensions, triggerDownload, exportFilename]);
+      const svgData = await getCleanSvgString();
+      if (!svgData) return;
 
-  const getFullSceneAsCanvas = useCallback(async (): Promise<HTMLCanvasElement | null> => {
+      const hasBackground = !!backgroundImage || !!backgroundVideo;
+      const exportWidth = hasBackground && exportFrame ? exportFrame.width : canvasDimensions.width;
+      const exportHeight = hasBackground && exportFrame ? exportFrame.height : canvasDimensions.height;
+      const exportViewBox = hasBackground && exportFrame
+        ? `${exportFrame.x} ${exportFrame.y} ${exportFrame.width} ${exportFrame.height}`
+        : `0 0 ${canvasDimensions.width} ${canvasDimensions.height}`;
+
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
+      const svgNode = svgDoc.documentElement;
+
+      svgNode.setAttribute('viewBox', exportViewBox);
+      svgNode.setAttribute('width', String(exportWidth));
+      svgNode.setAttribute('height', String(exportHeight));
+
+      const finalSvgData = new XMLSerializer().serializeToString(svgNode);
+
+      const canvas = document.createElement('canvas');
+      const scaleFactor = 1; // For higher resolution output
+      canvas.width = exportWidth * scaleFactor;
+      canvas.height = exportHeight * scaleFactor;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Could not create canvas context for export.");
+
+      const svgImg = new Image();
+      await new Promise<void>((resolve, reject) => {
+        svgImg.onload = () => resolve();
+        svgImg.onerror = (err) => reject(new Error("Failed to load bubble SVG for export: " + String(err)));
+        svgImg.src = 'data:image/svg+xml;base64,' + b64EncodeUnicode(finalSvgData);
+      });
+
+      ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/png');
+      triggerDownload(dataUrl, `${exportFilename || 'speech-bubbles'}.png`);
+    } catch (error) {
+      console.error(`Failed to export bubbles as PNG:`, error);
+      alert(`Sorry, there was an error exporting the bubbles. ${error instanceof Error ? error.message : ''}`);
+    }
+  };
+
+  const getFullSceneAsCanvas = async (): Promise<HTMLCanvasElement | null> => {
     const { width: sceneWidth, height: sceneHeight } = canvasDimensions;
     const fullCanvas = document.createElement('canvas');
     fullCanvas.width = sceneWidth;
@@ -594,171 +594,137 @@ const App = (): React.ReactElement => {
     const ctx = fullCanvas.getContext('2d');
     if (!ctx) return null;
 
-    const hasBackground = backgroundImage || backgroundVideo;
+    try {
+      const hasBackground = backgroundImage || backgroundVideo;
 
-    // 1. Draw filtered background if it exists
-    if (hasBackground) {
+      if (hasBackground) {
         let sourceDataURL: string | null = null;
-        try {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = sceneWidth;
-            tempCanvas.height = sceneHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            if (!tempCtx) throw new Error("Could not create temp canvas context.");
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = sceneWidth;
+        tempCanvas.height = sceneHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) throw new Error("Could not create temp canvas context.");
 
-            if (backgroundVideo && videoRef.current) {
-                tempCtx.drawImage(videoRef.current, 0, 0, sceneWidth, sceneHeight);
-                sourceDataURL = tempCanvas.toDataURL();
-            } else if (backgroundImage) {
-                const bgImg = new Image();
-                await new Promise<void>((resolve, reject) => {
-                    bgImg.onload = () => resolve();
-                    bgImg.onerror = () => reject(new Error('Failed to load background image for filtering.'));
-                    bgImg.crossOrigin = "anonymous";
-                    bgImg.src = backgroundImage;
-                });
-                tempCtx.drawImage(bgImg, 0, 0, sceneWidth, sceneHeight);
-                sourceDataURL = tempCanvas.toDataURL();
-            }
-        } catch (error) {
-            console.error("Failed to load background media for export.", error);
-            alert(`Could not load the background for export. ${error instanceof Error ? error.message : ''}`);
-            return null;
+        if (backgroundVideo && videoRef.current) {
+          tempCtx.drawImage(videoRef.current, 0, 0, sceneWidth, sceneHeight);
+          sourceDataURL = tempCanvas.toDataURL();
+        } else if (backgroundImage) {
+          const bgImg = new Image();
+          await new Promise<void>((resolve, reject) => {
+            bgImg.onload = () => resolve();
+            bgImg.onerror = (err) => reject(new Error('Failed to load background image for filtering: ' + String(err)));
+            bgImg.crossOrigin = "anonymous";
+            bgImg.src = backgroundImage;
+          });
+          tempCtx.drawImage(bgImg, 0, 0, sceneWidth, sceneHeight);
+          sourceDataURL = tempCanvas.toDataURL();
         }
 
         if (sourceDataURL) {
-            const { brightness, contrast, saturate, temperature } = backgroundFilters;
-            const tempValue = temperature / 100; // range -1 to 1
-            const tempR = 1 + 0.15 * tempValue;
-            const tempB = 1 - 0.15 * tempValue;
-            const tempMatrix = `${tempR} 0 0 0 0 0 1 0 0 0 0 0 ${tempB} 0 0 0 0 0 1 0`;
+          const { brightness, contrast, saturate, temperature } = backgroundFilters;
+          const tempValue = temperature / 100;
+          const tempR = 1 + 0.15 * tempValue;
+          const tempB = 1 - 0.15 * tempValue;
+          const tempMatrix = `${tempR} 0 0 0 0 0 1 0 0 0 0 0 ${tempB} 0 0 0 0 0 1 0`;
+          const filterStyleString = [
+            `brightness(${brightness}%)`, `contrast(${contrast}%)`, `saturate(${saturate}%)`,
+            temperature !== 0 ? `url(#background-temperature-export)` : '',
+          ].filter(Boolean).join(' ');
 
-            const filterStyleString = [
-                `brightness(${brightness}%)`,
-                `contrast(${contrast}%)`,
-                `saturate(${saturate}%)`,
-                temperature !== 0 ? `url(#background-temperature-export)` : '',
-            ].filter(Boolean).join(' ');
+          const filterSvgString = `
+            <svg width="${sceneWidth}" height="${sceneHeight}" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                ${temperature !== 0 ? `
+                <filter id="background-temperature-export">
+                  <feColorMatrix type="matrix" values="${tempMatrix}" />
+                </filter>` : ''}
+              </defs>
+              <image href="${sourceDataURL}" width="100%" height="100%" style="filter: ${filterStyleString};" />
+            </svg>`;
 
-            const filterSvgString = `
-                <svg width="${sceneWidth}" height="${sceneHeight}" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                        ${temperature !== 0 ? `
-                        <filter id="background-temperature-export">
-                            <feColorMatrix type="matrix" values="${tempMatrix}" />
-                        </filter>
-                        ` : ''}
-                    </defs>
-                    <image href="${sourceDataURL}" width="100%" height="100%" style="filter: ${filterStyleString};" />
-                </svg>
-            `;
-
-            const filteredBgImg = new Image();
-            try {
-                await new Promise<void>((resolve, reject) => {
-                    filteredBgImg.onload = () => resolve();
-                    filteredBgImg.onerror = () => reject(new Error('Failed to load filtered background SVG.'));
-                    filteredBgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(filterSvgString)));
-                });
-                ctx.drawImage(filteredBgImg, 0, 0, sceneWidth, sceneHeight);
-            } catch (error) {
-                console.error("Failed to apply filters via SVG.", error);
-                alert("An error occurred while applying background effects for export.");
-                return null;
-            }
+          const filteredBgImg = new Image();
+          await new Promise<void>((resolve, reject) => {
+            filteredBgImg.onload = () => resolve();
+            filteredBgImg.onerror = (err) => reject(new Error('Failed to load filtered background SVG: ' + String(err)));
+            filteredBgImg.src = 'data:image/svg+xml;base64,' + b64EncodeUnicode(filterSvgString);
+          });
+          ctx.drawImage(filteredBgImg, 0, 0, sceneWidth, sceneHeight);
         }
-    }
+      }
 
-    // 2. Prepare and draw SVG overlay of bubbles
-    const svgData = await getCleanSvgString();
-    if (!svgData) {
-        if (bubbles.length > 0) alert("Failed to prepare the speech bubbles for export.");
-        return fullCanvas; 
-    }
+      const svgData = await getCleanSvgString();
+      if (svgData) {
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
+        const svgNode = svgDoc.documentElement;
+        svgNode.setAttribute('width', String(sceneWidth));
+        svgNode.setAttribute('height', String(sceneHeight));
+        svgNode.setAttribute('viewBox', `0 0 ${sceneWidth} ${sceneHeight}`);
+        const finalSvgData = new XMLSerializer().serializeToString(svgNode);
 
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgData, "image/svg+xml");
-    const svgNode = svgDoc.documentElement;
-
-    svgNode.setAttribute('width', String(sceneWidth));
-    svgNode.setAttribute('height', String(sceneHeight));
-    svgNode.setAttribute('viewBox', `0 0 ${sceneWidth} ${sceneHeight}`);
-
-    const finalSvgData = new XMLSerializer().serializeToString(svgNode);
-
-    const svgImg = new Image();
-    try {
+        const svgImg = new Image();
         await new Promise<void>((resolve, reject) => {
-            svgImg.onload = () => resolve();
-            svgImg.onerror = () => reject(new Error('Failed to load bubble SVG for export.'));
-            svgImg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(finalSvgData)));
+          svgImg.onload = () => resolve();
+          svgImg.onerror = (err) => reject(new Error('Failed to load bubble SVG for export: ' + String(err)));
+          svgImg.src = 'data:image/svg+xml;base64,' + b64EncodeUnicode(finalSvgData);
         });
         ctx.drawImage(svgImg, 0, 0, sceneWidth, sceneHeight);
+      } else if (bubbles.length > 0) {
+        alert("Failed to prepare the speech bubbles for export.");
+      }
+
+      return fullCanvas;
     } catch (error) {
-        console.error("Failed to load SVG overlay for export.", error);
-        alert(`Could not load the speech bubbles for export. ${error instanceof Error ? error.message : ''}`);
-        return null;
+      console.error("Failed to generate full scene canvas:", error);
+      alert(`Could not generate the scene for export. ${error instanceof Error ? error.message : ''}`);
+      return null;
     }
+  }
 
-    return fullCanvas;
-  }, [canvasDimensions, backgroundImage, backgroundVideo, backgroundFilters, getCleanSvgString, bubbles]);
-
-  const exportSceneAsRaster = useCallback(async (format: 'png' | 'jpeg' | 'webp') => {
+  const exportSceneAsRaster = async (format: 'png' | 'jpeg' | 'webp') => {
     const hasBackground = backgroundImage || backgroundVideo;
     if (!hasBackground || !exportFrame) {
-      alert("Please upload a background image or video first.");
+      alert("Please upload a background image or video first to export the scene.");
       return;
     }
 
     const fullSceneCanvas = await getFullSceneAsCanvas();
     if (!fullSceneCanvas) return;
 
-    // Create final cropped canvas
     const croppedCanvas = document.createElement('canvas');
     croppedCanvas.width = exportFrame.width;
     croppedCanvas.height = exportFrame.height;
     const ctxCropped = croppedCanvas.getContext('2d');
     if (!ctxCropped) return;
 
-    // Copy the cropped region from the full scene canvas
     ctxCropped.drawImage(
       fullSceneCanvas,
-      exportFrame.x,
-      exportFrame.y,
-      exportFrame.width,
-      exportFrame.height,
-      0,
-      0,
-      exportFrame.width,
-      exportFrame.height
+      exportFrame.x, exportFrame.y, exportFrame.width, exportFrame.height,
+      0, 0, exportFrame.width, exportFrame.height
     );
     
     const mimeType = `image/${format}`;
     const dataUrl = croppedCanvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
     triggerDownload(dataUrl, `${exportFilename || 'comic-scene'}.${format}`);
-  }, [backgroundImage, backgroundVideo, exportFrame, getFullSceneAsCanvas, triggerDownload, exportFilename]);
+  };
   
   const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
   const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
 
-  const handleZoom = useCallback((factor: number) => {
+  const handleZoom = (factor: number) => {
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
     let newW = w * factor;
-
-    // Clamp width to zoom limits
-    newW = Math.max(MIN_VIEWBOX_WIDTH, Math.min(MAX_VIEWBOX_WIDTH, newW));
-    
+    newW = Math.max(MIN_VIEWBOX_WIDTH, Math.min(newW, MAX_VIEWBOX_WIDTH));
     const aspectRatio = h / w;
     const newH = newW * aspectRatio;
-
     const newX = x + (w - newW) / 2;
     const newY = y + (h - newH) / 2;
     setViewBox(`${newX} ${newY} ${newW} ${newH}`);
-  }, [viewBox, MIN_VIEWBOX_WIDTH, MAX_VIEWBOX_WIDTH, setViewBox]);
+  };
 
-  const handlePan = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+  const handlePan = (direction: 'up' | 'down' | 'left' | 'right') => {
     const [x, y, w, h] = viewBox.split(' ').map(parseFloat);
-    const panAmount = w * 0.1; // Pan by 10% of the current view width
+    const panAmount = w * 0.1;
     let newX = x, newY = y;
     switch (direction) {
       case 'up': newY -= panAmount; break;
@@ -767,7 +733,7 @@ const App = (): React.ReactElement => {
       case 'right': newX += panAmount; break;
     }
     setViewBox(`${newX} ${newY} ${w} ${h}`);
-  }, [viewBox, setViewBox]);
+  };
   
   const currentViewBoxWidth = parseFloat(viewBox.split(' ')[2]);
   const zoomPercentage = Math.round((canvasDimensions.width / currentViewBoxWidth) * 100);
@@ -883,6 +849,7 @@ const App = (): React.ReactElement => {
               canvasDimensions={canvasDimensions}
               exportFrame={exportFrame}
               onUpdateExportFrame={handleUpdateExportFrame}
+              handleSize={handleSize}
           />
            <div className="absolute bottom-4 right-4 bg-stone-900 bg-opacity-80 rounded-lg p-1 flex flex-col items-center space-y-1 shadow-lg">
                 <div className="flex space-x-1">
@@ -952,6 +919,8 @@ const App = (): React.ReactElement => {
                 onUpdateExportFrame={handleUpdateExportFrame}
                 onResetExportFrame={handleResetExportFrame}
                 canvasDimensions={canvasDimensions}
+                handleSize={handleSize}
+                onUpdateHandleSize={setHandleSize}
             />
          </div>
          <div className="flex-shrink-0">

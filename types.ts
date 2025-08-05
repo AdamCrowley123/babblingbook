@@ -62,6 +62,7 @@ export interface BubbleProps {
   textColor: string;
   textAlign: TextAlign;
   lineHeight: number;
+  letterSpacing: number;
   shape: ShapeType;
   fillColor: string;
   borderColor: string;
@@ -98,8 +99,7 @@ export interface BubbleProps {
   freehandSimplification?: number;
   isDrawingEnabled?: boolean;
   tailVisible: boolean;
-  randomScale: number;
-  randomX: number;
-  randomY: number;
-  randomRotation: number;
+  charZoomRandomness: number;
+  charYRandomness: number;
+  charRotationRandomness: number;
 }
