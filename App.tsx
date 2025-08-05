@@ -483,7 +483,7 @@ const App: React.FC = () => {
     svgNode.querySelector('#background-sharpen')?.remove();
     svgNode.querySelector('#background-temperature')?.remove();
 
-    const uniqueFonts = [...new Set(bubbles.map(b => b.fontFamily))];
+    const uniqueFonts = [...new Set(bubbles.map(b => b.fontFamily as string))] as string[];
     
     const foreignObjects = svgNode.querySelectorAll('foreignObject');
     foreignObjects.forEach((fo, index) => {
@@ -784,9 +784,9 @@ const App: React.FC = () => {
                     id="filename-input"
                     type="text"
                     value={exportFilename}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setExportFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))
-                    }
+                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+  setExportFilename((e.target as HTMLInputElement).value.replace(/[^a-zA-Z0-9_-]/g, ''))
+}
                     placeholder="File Name"
                     className="w-full sm:w-40 px-3 py-2 bg-stone-700 border border-stone-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder-stone-400"
                     title="Set the name for exported files"
