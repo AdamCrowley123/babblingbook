@@ -10,8 +10,9 @@ export const FONT_FAMILIES = [
   'Anton',
   'Chewy',
   'Yomogi',
-  'Arial',
   'Patrick Hand',
+  'Arial',
+  'Verdana',
 ];
 
 export const SHAPE_OPTIONS = [
