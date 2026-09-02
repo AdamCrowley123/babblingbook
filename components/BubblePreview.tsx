@@ -3,112 +3,7 @@ import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { ShapeType, BorderStyle, TailType } from '../types';
 import type { BubbleProps, TailPosition, TailProps, BackgroundFilters, ExportFrame } from '../types';
 import UploadIcon from './icons/UploadIcon';
-
-//#region Path Utilities
-// --- RDP (Ramer-Douglas-Peucker) algorithm for path simplification ---
-function getSqDist(p: {x:number, y:number}, p2: {x:number, y:number}) {
-    const dx = p.x - p2.x;
-    const dy = p.y - p2.y;
-    return dx * dx + dy * dy;
-}
-function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
-    let x = p1.x;
-    let y = p1.y;
-    let dx = p2.x - x;
-    let dy = p2.y - y;
-    if (dx !== 0 || dy !== 0) {
-        const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
-        if (t > 1) {
-            x = p2.x;
-            y = p2.y;
-        } else if (t > 0) {
-            x += dx * t;
-            y += dy * t;
-        }
-    }
-    dx = p.x - x;
-    dy = p.y - y;
-    return dx * dx + dy * dy;
-}
-function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
-    if (points.length < 2) return points;
-    let len = points.length;
-    let markers = new Uint8Array(len);
-    let first = 0;
-    let last = len - 1;
-    let stack = [];
-    let newPoints = [];
-    let i, maxSqDist, sqDist, index;
-
-    markers[first] = markers[last] = 1;
-
-    while (last) {
-        maxSqDist = 0;
-        index = 0; // Initialize index
-        for (i = first + 1; i < last; i++) {
-            sqDist = getSqSegDist(points[i], points[first], points[last]);
-            if (sqDist > maxSqDist) {
-                index = i;
-                maxSqDist = sqDist;
-            }
-        }
-        if (maxSqDist > sqTolerance) {
-            markers[index] = 1;
-            stack.push(first, index, index, last);
-        }
-        const newLast = stack.pop();
-        const newFirst = stack.pop();
-        last = newLast !== undefined ? newLast : 0;
-        first = newFirst !== undefined ? newFirst : 0;
-    }
-
-    for (i = 0; i < len; i++) {
-        if (markers[i]) {
-            newPoints.push(points[i]);
-        }
-    }
-    return newPoints;
-}
-
-// --- Path smoothing using Catmull-Rom splines to generate SVG path data ---
-function getControlPoints(p0: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}, p3: {x:number, y:number}, tension: number) {
-    const t = tension;
-    const cp1 = {
-        x: p1.x + (p2.x - p0.x) / 6 * t,
-        y: p1.y + (p2.y - p0.y) / 6 * t
-    };
-    const cp2 = {
-        x: p2.x - (p3.x - p1.x) / 6 * t,
-        y: p2.y - (p3.y - p1.y) / 6 * t
-    };
-    return [cp1, cp2];
-}
-
-function createSmoothPath(points: {x:number, y:number}[], tension: number, closed = true) {
-    if (points.length < 2) return '';
-    if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
-    
-    let path = `M ${points[0].x} ${points[0].y}`;
-    const p = [...points];
-
-    if (closed) {
-      p.unshift(points[points.length - 1]);
-      p.push(points[0], points[1]);
-    } else {
-      p.unshift(points[0]);
-      p.push(points[points.length-1]);
-    }
-    
-    for (let i = 1; i < p.length - 2; i++) {
-        const [cp1, cp2] = getControlPoints(p[i-1], p[i], p[i+1], p[i+2], tension);
-        path += ` C ${cp1.x},${cp1.y} ${cp2.x},${cp2.y} ${p[i+1].x},${p[i+1].y}`;
-    }
-
-    if (closed) path += ' Z';
-    
-    return path;
-}
-//#endregion
+import { getSqDist, getSqSegDist, simplifyRDP, getControlPoints, createSmoothPath } from '../utils/pathUtils';
 
 interface BubblePreviewProps {
   bubbles: BubbleProps[];
@@ -335,7 +230,116 @@ const getThoughtTailPoints = (tail: TailProps) => {
     return points.reverse();
 };
 
-interface BubbleGraphicProps {
+interface BubbleShapeLayerProps {
+  bubble: BubbleProps;
+  pass: 'stroke' | 'fill';
+}
+
+const BubbleShapeLayer: React.FC<BubbleShapeLayerProps> = ({ bubble, pass }) => {
+  const bubblePath = useMemo(() => getBubblePath(bubble), [bubble]);
+  const borderDashArray = getBorderStyleArray(bubble.borderStyle, bubble.borderWidth);
+  const isFreehandEmpty = bubble.shape === ShapeType.FREEHAND && (!bubble.freehandPoints || bubble.freehandPoints.length === 0);
+
+  if (!bubble.bubbleVisible || isFreehandEmpty) return null;
+
+  return (
+    <g transform={`rotate(${bubble.rotation} ${bubble.x} ${bubble.y})`}>
+      {pass === 'stroke' ? (
+        <>
+          <path
+            d={bubblePath}
+            fill={bubble.fillColor}
+            stroke={bubble.borderColor}
+            strokeWidth={bubble.borderWidth}
+            strokeDasharray={borderDashArray}
+            strokeLinejoin="round"
+          />
+          {bubble.tailVisible && bubble.shape !== ShapeType.THOUGHT && bubble.tails.map(tail => {
+            const pathData = tail.type === TailType.LIGHTNING
+              ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs)
+              : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
+            return (
+              <g key={`tail-stroke-group-${tail.id}`}>
+                <path d={pathData.fillPath} fill={bubble.fillColor} stroke="none" />
+                <path
+                  d={pathData.strokePath}
+                  fill="none"
+                  stroke={bubble.borderColor}
+                  strokeWidth={bubble.borderWidth}
+                  strokeDasharray={borderDashArray}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </g>
+            );
+          })}
+          {bubble.tailVisible && bubble.shape === ShapeType.THOUGHT && bubble.tails.map(tail => {
+            const tailStrokeWidth = bubble.borderWidth / 2;
+            const tailBorderDashArray = getBorderStyleArray(bubble.borderStyle, tailStrokeWidth);
+            return (
+              <g key={`thought-tail-stroke-${tail.id}`}>
+                {getThoughtTailPoints(tail).map((p, i, arr) => {
+                  const dynamicBaseRadius = Math.min(bubble.width, bubble.height) / 12.0;
+                  const scale = 0.4 + 0.6 * (i / (arr.length - 1));
+                  return (
+                    <circle
+                      key={i}
+                      cx={p.x}
+                      cy={p.y}
+                      r={dynamicBaseRadius * scale}
+                      fill={bubble.fillColor}
+                      stroke={bubble.borderColor}
+                      strokeWidth={tailStrokeWidth}
+                      strokeDasharray={tailBorderDashArray}
+                    />
+                  );
+                })}
+              </g>
+            );
+          })}
+        </>
+      ) : (
+        <>
+          <path
+            d={bubblePath}
+            fill={bubble.fillColor}
+            stroke="none"
+          />
+          {bubble.tailVisible && bubble.shape !== ShapeType.THOUGHT && bubble.tails.map(tail => {
+            const pathData = tail.type === TailType.LIGHTNING
+              ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs)
+              : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
+            return (
+              <path key={`tail-fill-${tail.id}`} d={pathData.fillPath} fill={bubble.fillColor} stroke="none" />
+            );
+          })}
+          {bubble.tailVisible && bubble.shape === ShapeType.THOUGHT && bubble.tails.map(tail => {
+            return (
+              <g key={`thought-tail-fill-${tail.id}`}>
+                {getThoughtTailPoints(tail).map((p, i, arr) => {
+                  const dynamicBaseRadius = Math.min(bubble.width, bubble.height) / 12.0;
+                  const scale = 0.4 + 0.6 * (i / (arr.length - 1));
+                  return (
+                    <circle
+                      key={i}
+                      cx={p.x}
+                      cy={p.y}
+                      r={dynamicBaseRadius * scale}
+                      fill={bubble.fillColor}
+                      stroke="none"
+                    />
+                  );
+                })}
+              </g>
+            );
+          })}
+        </>
+      )}
+    </g>
+  );
+};
+
+interface BubbleContentAndHandlesProps {
   bubble: BubbleProps;
   isActive: boolean;
   showHandles: boolean;
@@ -344,9 +348,11 @@ interface BubbleGraphicProps {
   handleSize: number;
 }
 
-const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActive, showHandles, onActivate, onInteractionStart, handleSize }) => {
-  const bubblePath = useMemo(() => getBubblePath(bubble), [bubble]);
-  
+const BubbleContentAndHandles: React.FC<BubbleContentAndHandlesProps> = React.memo(({
+  bubble, isActive, showHandles, onActivate, onInteractionStart, handleSize
+}) => {
+  const isFreehandEmpty = bubble.shape === ShapeType.FREEHAND && (!bubble.freehandPoints || bubble.freehandPoints.length === 0);
+
   const textStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
@@ -428,12 +434,7 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
     });
 
     return { __html: container.innerHTML };
-
   }, [bubble.text, bubble.charZoomRandomness, bubble.charYRandomness, bubble.charRotationRandomness]);
-
-
-  const borderDashArray = getBorderStyleArray(bubble.borderStyle, bubble.borderWidth);
-  const isFreehandEmpty = bubble.shape === ShapeType.FREEHAND && (!bubble.freehandPoints || bubble.freehandPoints.length === 0);
 
   return (
     <g transform={`rotate(${bubble.rotation} ${bubble.x} ${bubble.y})`}>
@@ -441,77 +442,16 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
         onMouseDown={(e) => { if (e.button === 0 && !isActive) onActivate(bubble.id); }}
         style={{ fontFamily: bubble.fontFamily, cursor: isActive ? 'default' : 'pointer' }}
       >
-        {bubble.bubbleVisible && !isFreehandEmpty && (
-          <g filter={bubble.bubbleShadow ? `url(#bubble-shadow-${bubble.id})` : 'none'}>
-              <path
-                  d={bubblePath}
-                  fill={bubble.fillColor}
-                  stroke={bubble.borderColor}
-                  strokeWidth={bubble.borderWidth}
-                  strokeDasharray={borderDashArray}
-                  strokeLinejoin="round"
-              />
-
-              {bubble.tailVisible && bubble.shape !== ShapeType.THOUGHT && bubble.tails.map(tail => {
-                  const pathData = tail.type === TailType.LIGHTNING
-                      ? getLightningTailPath(tail.p1, tail.p2, tail.p3, tail.zigs)
-                      : getCurvedTailPath(tail.p1, tail.p2, tail.p3, tail.bend);
-                  return (
-                      <g key={`tail-group-${tail.id}`}>
-                          <path d={pathData.fillPath} fill={bubble.fillColor} stroke="none" />
-                          <path
-                              d={pathData.strokePath}
-                              fill="none"
-                              stroke={bubble.borderColor}
-                              strokeWidth={bubble.borderWidth}
-                              strokeDasharray={borderDashArray}
-                              strokeLinejoin="round"
-                              strokeLinecap="round"
-                          />
-                      </g>
-                  );
-              })}
-
-              {bubble.tailVisible && bubble.shape === ShapeType.THOUGHT && bubble.tails.map(tail => {
-                  const tailStrokeWidth = bubble.borderWidth / 2;
-                  const tailBorderDashArray = getBorderStyleArray(bubble.borderStyle, tailStrokeWidth);
-
-                  return (
-                    <g key={tail.id}>
-                        {getThoughtTailPoints(tail).map((p, i, arr) => {
-                          const dynamicBaseRadius = Math.min(bubble.width, bubble.height) / 12.0;
-                          const scale = 0.4 + 0.6 * (i / (arr.length - 1));
-                          return (
-                            <circle
-                                key={i}
-                                cx={p.x}
-                                cy={p.y}
-                                r={dynamicBaseRadius * scale}
-                                fill={bubble.fillColor}
-                                stroke={bubble.borderColor}
-                                strokeWidth={tailStrokeWidth}
-                                strokeDasharray={tailBorderDashArray}
-                            />
-                          );
-                        })}
-                    </g>
-                  );
-              })}
-          </g>
-        )}
-
-        {(!bubble.bubbleVisible || isFreehandEmpty) && (
-          <rect
-            x={bubble.x - bubble.width / 2}
-            y={bubble.y - bubble.height / 2}
-            width={bubble.width}
-            height={bubble.height}
-            fill="transparent"
-            stroke={isActive && isFreehandEmpty ? 'rgba(255, 255, 255, 0.3)' : 'transparent'}
-            strokeWidth="1"
-            strokeDasharray="4 4"
-          />
-        )}
+        <rect
+          x={bubble.x - bubble.width / 2}
+          y={bubble.y - bubble.height / 2}
+          width={bubble.width}
+          height={bubble.height}
+          fill="transparent"
+          stroke={isActive && isFreehandEmpty ? 'rgba(255, 255, 255, 0.3)' : 'transparent'}
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
 
         <foreignObject 
           x={bubble.x - bubble.width / 2 + bubble.borderWidth} 
@@ -569,6 +509,53 @@ const BubbleGraphic: React.FC<BubbleGraphicProps> = React.memo(({ bubble, isActi
   );
 });
 
+interface CompoundBubbleGraphicProps {
+  group: BubbleProps[];
+  activeBubbleId: number;
+  showHandles: boolean;
+  onActivate: (id: number) => void;
+  onInteractionStart: (e: React.MouseEvent, type: 'tail' | 'bubble' | 'resize', payload: any) => void;
+  handleSize: number;
+}
+
+const CompoundBubbleGraphic: React.FC<CompoundBubbleGraphicProps> = React.memo(({
+  group, activeBubbleId, showHandles, onActivate, onInteractionStart, handleSize
+}) => {
+  const primaryBubble = group[0];
+  const hasShadow = group.some(b => b.bubbleShadow);
+
+  return (
+    <g className="compound-bubble-group">
+      {/* PASS 1: Border Strokes and Shadows */}
+      <g filter={hasShadow ? `url(#bubble-shadow-${primaryBubble.id})` : 'none'}>
+        {group.map(bubble => (
+          <BubbleShapeLayer key={`stroke-${bubble.id}`} bubble={bubble} pass="stroke" />
+        ))}
+      </g>
+
+      {/* PASS 2: Solid Fills (seamlessly eliminates internal dividing strokes) */}
+      <g className="compound-bubble-fills">
+        {group.map(bubble => (
+          <BubbleShapeLayer key={`fill-${bubble.id}`} bubble={bubble} pass="fill" />
+        ))}
+      </g>
+
+      {/* PASS 3: Content and Interactive Handles */}
+      {group.map(bubble => (
+        <BubbleContentAndHandles
+          key={`content-${bubble.id}`}
+          bubble={bubble}
+          isActive={bubble.id === activeBubbleId}
+          showHandles={showHandles}
+          onActivate={onActivate}
+          onInteractionStart={onInteractionStart}
+          handleSize={handleSize}
+        />
+      ))}
+    </g>
+  );
+});
+
 const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, svgRef, onUpdate, onActivateBubble, backgroundImage, backgroundVideo, videoRef, onFileDrop, onVideoFileDrop, viewBox, setViewBox, minViewBoxWidth, maxViewBoxWidth, backgroundFilters, showExportFrame, canvasDimensions, exportFrame, onUpdateExportFrame, handleSize }) => {
   const [draggingTailHandle, setDraggingTailHandle] = useState<{ id: number; handle: 'p1' | 'p2' | 'p3' } | null>(null);
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
@@ -584,6 +571,33 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
   const panningState = useRef<{ startX: number; startY: number; viewBoxX: number; viewBoxY: number; } | null>(null);
 
   const activeBubble = useMemo(() => bubbles.find(b => b.id === activeBubbleId), [bubbles, activeBubbleId]);
+  
+  const bubbleGroups = useMemo(() => {
+    const groupsMap = new Map<number | string, BubbleProps[]>();
+    const independentBubbles: BubbleProps[] = [];
+
+    bubbles.forEach(b => {
+      if (b.groupId) {
+        if (!groupsMap.has(b.groupId)) {
+          groupsMap.set(b.groupId, []);
+        }
+        groupsMap.get(b.groupId)!.push(b);
+      } else {
+        independentBubbles.push(b);
+      }
+    });
+
+    const list: BubbleProps[][] = [];
+    groupsMap.forEach(group => {
+      list.push(group);
+    });
+    independentBubbles.forEach(b => {
+      list.push([b]);
+    });
+
+    return list;
+  }, [bubbles]);
+
   const isInteractingWithBubble = !!draggingTailHandle || isDraggingBubble || !!resizeDirection || isDrawing;
 
   const getSvgCoordinates = useCallback((e: MouseEvent | React.MouseEvent): {x: number, y: number} => {
@@ -1025,11 +1039,11 @@ const BubblePreview: React.FC<BubblePreviewProps> = ({ bubbles, activeBubbleId, 
               />
           )}
 
-          {bubbles.map(bubble => (
-              <BubbleGraphic
-                key={bubble.id}
-                bubble={bubble}
-                isActive={bubble.id === activeBubbleId}
+          {bubbleGroups.map(group => (
+              <CompoundBubbleGraphic
+                key={group.map(b => b.id).join('-')}
+                group={group}
+                activeBubbleId={activeBubbleId}
                 showHandles={showHandles}
                 onActivate={onActivateBubble}
                 onInteractionStart={handleInteractionStart}

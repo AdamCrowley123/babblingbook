@@ -1,19 +1,8 @@
 
 import { ShapeType, BorderStyle, TextAlign } from './types';
+import { getAllFontFamilies } from './utils/fontManager';
 
-export const FONT_FAMILIES = [
-  'Comic Neue',
-  'Bangers',
-  'Luckiest Guy',
-  'Permanent Marker',
-  'Komika Text',
-  'Anton',
-  'Chewy',
-  'Yomogi',
-  'Patrick Hand',
-  'Arial',
-  'Verdana',
-];
+export const FONT_FAMILIES = getAllFontFamilies();
 
 export const SHAPE_OPTIONS = [
   { value: ShapeType.OVAL, label: 'Oval' },

@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "emoji-picker-react": "^4.9.4",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "emoji-picker-react": "^4.9.4"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.14.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

@@ -26,6 +26,8 @@ interface GlobalSettingsPanelProps {
   canvasDimensions: { width: number; height: number };
   handleSize: number;
   onUpdateHandleSize: (value: number) => void;
+  onSaveProject?: () => void;
+  onLoadProject?: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 // Helper components copied from ControlPanel to make this component self-contained.
@@ -74,6 +76,42 @@ const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
+const SaveIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+    <polyline points="17 21 17 13 7 13 7 21"/>
+    <polyline points="7 3 7 8 15 8"/>
+  </svg>
+);
+
+const FolderIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+
 const CompactSlider: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; unit?: string }> = ({ label, value, min, max, step = 1, onChange, unit = 'px' }) => (
     <div>
       <div className="flex justify-between items-baseline mb-1">
@@ -86,7 +124,7 @@ const CompactSlider: React.FC<{ label: string; value: number; min: number; max: 
 
 
 const GlobalSettingsPanel: React.FC<GlobalSettingsPanelProps> = ({ 
-    onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, backgroundFilters, onUpdateFilters, showExportFrame, onSetShowExportFrame, exportFrame, onUpdateExportFrame, onResetExportFrame, canvasDimensions, handleSize, onUpdateHandleSize
+    onImageUpload, onVideoUpload, onClearBackground, hasImage, hasVideo, onAddBubble, onDeleteBubble, bubbleCount, backgroundFilters, onUpdateFilters, showExportFrame, onSetShowExportFrame, exportFrame, onUpdateExportFrame, onResetExportFrame, canvasDimensions, handleSize, onUpdateHandleSize, onSaveProject, onLoadProject
 }) => {
   const [isEffectsExpanded, setIsEffectsExpanded] = useState(true);
   const [isExportAreaExpanded, setIsExportAreaExpanded] = useState(true);
@@ -95,11 +133,39 @@ const GlobalSettingsPanel: React.FC<GlobalSettingsPanelProps> = ({
   return (
     <div className="h-full flex flex-col overflow-y-auto">
        <div className="p-6">
+            <Section title="Project">
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        onClick={onSaveProject}
+                        className="flex items-center justify-center space-x-1 px-3 py-2 bg-stone-700 hover:bg-stone-600 rounded-md transition-colors text-sm"
+                        title="Save project as JSON file"
+                    >
+                        <SaveIcon className="w-4 h-4" />
+                        <span>Save (.json)</span>
+                    </button>
+                    <label
+                        htmlFor="project-load-input"
+                        className="cursor-pointer flex items-center justify-center space-x-1 px-3 py-2 bg-stone-700 hover:bg-stone-600 rounded-md transition-colors text-sm"
+                        title="Open previously saved JSON project"
+                    >
+                        <FolderIcon className="w-4 h-4" />
+                        <span>Load (.json)</span>
+                    </label>
+                    <input
+                        id="project-load-input"
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={onLoadProject}
+                        className="hidden"
+                    />
+                </div>
+            </Section>
+
             <Section title="Global Actions">
                 <div className="flex flex-col space-y-2">
                     <button onClick={onAddBubble} className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-md transition-colors" title="Add a new bubble">
                         <AddIcon className="w-5 h-5" />
-                        <span>Add New</span>
+                        <span>Add New Bubble</span>
                     </button>
                     <button onClick={onDeleteBubble} disabled={bubbleCount <= 1} className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors disabled:bg-stone-600 disabled:cursor-not-allowed" title={bubbleCount <= 1 ? "Cannot delete the last bubble" : "Delete the active bubble"}>
                         <TrashIcon className="w-5 h-5" />
@@ -119,6 +185,10 @@ const GlobalSettingsPanel: React.FC<GlobalSettingsPanelProps> = ({
                         <span>Video</span>
                     </label>
                     <input id="video-upload" type="file" accept="video/*" onChange={onVideoUpload} className="hidden" disabled={hasImage}/>
+
+                    <p className="text-xs text-stone-400 text-center pt-1">
+                        💡 Premi <kbd className="px-1 py-0.5 bg-stone-700 rounded text-stone-300 border border-stone-600 font-mono">Ctrl+V</kbd> per incollare un'immagine dagli appunti, o <kbd className="px-1 py-0.5 bg-stone-700 rounded text-stone-300 border border-stone-600 font-mono">Ctrl+C</kbd> per copiare il canvas!
+                    </p>
 
                     {hasBackground && (
                         <button onClick={onClearBackground} className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors" title="Clear background">

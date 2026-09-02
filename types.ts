@@ -102,4 +102,5 @@ export interface BubbleProps {
   charZoomRandomness: number;
   charYRandomness: number;
   charRotationRandomness: number;
+  groupId?: number | null;
 }

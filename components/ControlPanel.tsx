@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import type { BubbleProps, TailProps } from '../types';
 import { ShapeType, TailType } from '../types';
 import { FONT_FAMILIES, SHAPE_OPTIONS, BORDER_STYLE_OPTIONS, TEXT_ALIGN_OPTIONS } from '../constants';
 import TrashIcon from './icons/TrashIcon';
-import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
+import type { EmojiClickData } from 'emoji-picker-react';
 import EmojiIcon from './icons/EmojiIcon';
 import AddIcon from './icons/AddIcon';
 import ResetIcon from './icons/ResetIcon';
 
+const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
 interface ControlPanelProps {
   bubbleProps: BubbleProps;
   onUpdate: (updates: Partial<BubbleProps>) => void;
   nextTailId: React.MutableRefObject<number>;
+  availableFonts?: string[];
+  allBubbles?: BubbleProps[];
+  onAddConnectedBubble?: () => void;
 }
 
 const Section: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
@@ -136,12 +140,14 @@ const RichTextEditor: React.FC<{ value: string; onChange: (value: string) => voi
                 </button>
             </div>
              {showPicker && (
-                <div className="absolute z-10 top-full mt-2 right-0">
-                    <EmojiPicker
-                        onEmojiClick={handleEmojiClick}
-                        theme={Theme.DARK}
-                        lazyLoadEmojis={true}
-                    />
+                <div className="absolute z-20 top-full mt-2 right-0 shadow-2xl">
+                    <Suspense fallback={<div className="p-4 bg-stone-900 border border-stone-700 rounded-lg text-sm text-stone-300">Loading emoji picker...</div>}>
+                        <EmojiPicker
+                            onEmojiClick={handleEmojiClick}
+                            theme={'dark' as any}
+                            lazyLoadEmojis={true}
+                        />
+                    </Suspense>
                 </div>
             )}
             <div
@@ -208,7 +214,7 @@ const ShapeIcon: React.FC<{shape: ShapeType}> = ({shape}) => {
     }
 }
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, nextTailId }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, nextTailId, availableFonts, allBubbles, onAddConnectedBubble }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'bubble'>('text');
   
     const handleAddTail = () => {
@@ -263,7 +269,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, next
                             <div>
                                 <Label htmlFor="font-family">Font Family</Label>
                                 <select id="font-family" value={bubbleProps.fontFamily} onChange={(e) => onUpdate({ fontFamily: e.target.value })} className="w-full mt-1 p-2 bg-stone-700 border border-stone-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
-                                    {FONT_FAMILIES.map((font) => <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>)}
+                                    {(availableFonts || FONT_FAMILIES).map((font) => <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>)}
                                 </select>
                             </div>
                             <Slider label="Default Font Size" value={bubbleProps.fontSize} min={10} max={150} onChange={(v) => onUpdate({ fontSize: v })} />
@@ -421,6 +427,66 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ bubbleProps, onUpdate, next
                                 <select id="border-style" value={bubbleProps.borderStyle} onChange={(e) => onUpdate({ borderStyle: e.target.value as any })} className="w-full mt-1 p-2 bg-stone-700 border border-stone-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
                                     {BORDER_STYLE_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
                                 </select>
+                            </div>
+                        </Section>
+
+                        <Section title="Connected / Compound Balloons">
+                            <div className="space-y-3 p-3 bg-stone-800 rounded-lg">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-stone-200">
+                                        {bubbleProps.groupId ? `🔗 Group #${bubbleProps.groupId}` : 'Standalone Balloon'}
+                                    </span>
+                                    {bubbleProps.groupId && (
+                                        <button
+                                            onClick={() => onUpdate({ groupId: null })}
+                                            className="text-xs px-2.5 py-1 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
+                                            title="Separate this balloon from the connected group"
+                                        >
+                                            Separate
+                                        </button>
+                                    )}
+                                </div>
+                                {onAddConnectedBubble && (
+                                    <button
+                                        onClick={onAddConnectedBubble}
+                                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md transition-colors text-sm font-semibold shadow"
+                                        title="Add a new balloon connected and merged with this one"
+                                    >
+                                        <AddIcon className="w-4 h-4" />
+                                        <span>+ Add Connected Balloon</span>
+                                    </button>
+                                )}
+                                {allBubbles && allBubbles.length > 1 && (
+                                    <div className="pt-2 border-t border-stone-700">
+                                        <Label htmlFor="merge-select">Merge with another balloon:</Label>
+                                        <select
+                                            id="merge-select"
+                                            value={bubbleProps.groupId ?? ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (!val) {
+                                                    onUpdate({ groupId: null });
+                                                } else {
+                                                    const targetId = parseInt(val);
+                                                    const target = allBubbles.find(b => b.id === targetId);
+                                                    const targetGroup = target?.groupId || targetId;
+                                                    onUpdate({ groupId: targetGroup });
+                                                }
+                                            }}
+                                            className="w-full mt-1 p-2 bg-stone-700 border border-stone-600 rounded-md text-sm focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="">None (Independent)</option>
+                                            {allBubbles.filter(b => b.id !== bubbleProps.id).map(b => (
+                                                <option key={b.id} value={b.id}>
+                                                    Balloon #{b.id} ({b.shape})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                <p className="text-xs text-stone-400">
+                                    Overlapping balloons in the same group melt together into a seamless compound speech bubble!
+                                </p>
                             </div>
                         </Section>
 

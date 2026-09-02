@@ -6,6 +6,7 @@ import { FONT_FAMILIES } from './constants';
 import ControlPanel from './components/ControlPanel';
 import BubblePreview from './components/BubblePreview';
 import DownloadIcon from './components/icons/DownloadIcon';
+import CopyIcon from './components/icons/CopyIcon';
 import ResetIcon from './components/icons/ResetIcon';
 import ZoomInIcon from './components/icons/ZoomInIcon';
 import ZoomOutIcon from './components/icons/ZoomOutIcon';
@@ -19,73 +20,13 @@ import VolumeUpIcon from './components/icons/VolumeUpIcon';
 import VolumeOffIcon from './components/icons/VolumeOffIcon';
 import GlobalSettingsPanel from './components/GlobalSettingsPanel';
 import InfoPanel from './components/InfoPanel';
+import { simplifyRDP } from './utils/pathUtils';
+import { initLocalFonts, getAllFontFamilies, getExportEmbeddedFontCss } from './utils/fontManager';
 
 const INITIAL_CANVAS_DIMENSIONS = { width: 1280, height: 720 };
 
 const MIN_ZOOM_PERCENT = 10;
 const MAX_ZOOM_PERCENT = 500;
-
-
-// Path simplification utility, moved here to be used in handleUpdate
-function getSqSegDist(p: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) {
-    let x = p1.x;
-    let y = p1.y;
-    let dx = p2.x - x;
-    let dy = p2.y - y;
-    if (dx !== 0 || dy !== 0) {
-        const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
-        if (t > 1) {
-            x = p2.x;
-            y = p2.y;
-        } else if (t > 0) {
-            x += dx * t;
-            y += dy * t;
-        }
-    }
-    dx = p.x - x;
-    dy = p.y - y;
-    return dx * dx + dy * dy;
-}
-function simplifyRDP(points: {x:number, y:number}[], sqTolerance: number) {
-    if (points.length < 2) return points;
-    let len = points.length;
-    let markers = new Uint8Array(len);
-    let first = 0;
-    let last = len - 1;
-    let stack: number[] = [];
-    let newPoints = [];
-    let i, maxSqDist, sqDist, index;
-
-    markers[first] = markers[last] = 1;
-
-    while (last) {
-        maxSqDist = 0;
-        index = 0;
-        for (i = first + 1; i < last; i++) {
-            sqDist = getSqSegDist(points[i], points[first], points[last]);
-            if (sqDist > maxSqDist) {
-                index = i;
-                maxSqDist = sqDist;
-            }
-        }
-        if (maxSqDist > sqTolerance) {
-            markers[index] = 1;
-            stack.push(first, index, index, last);
-        }
-        
-        const newLast = stack.pop();
-        const newFirst = stack.pop();
-        last = newLast !== undefined ? newLast : 0;
-        first = newFirst !== undefined ? newFirst : 0;
-    }
-
-    for (i = 0; i < len; i++) {
-        if (markers[i]) {
-            newPoints.push(points[i]);
-        }
-    }
-    return newPoints;
-}
 
 
 const INITIAL_PROPS: Omit<BubbleProps, 'id'> = {
@@ -185,6 +126,12 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   
   const [viewBox, setViewBox] = useState<string>(`0 0 ${INITIAL_CANVAS_DIMENSIONS.width} ${INITIAL_CANVAS_DIMENSIONS.height}`);
+  const [availableFonts, setAvailableFonts] = useState<string[]>(getAllFontFamilies());
+
+  useEffect(() => {
+    initLocalFonts();
+    setAvailableFonts(getAllFontFamilies());
+  }, []);
 
   const bubbleForPanel = bubbles.find(b => b.id === activeBubbleId) || bubbles[0];
 
@@ -240,9 +187,9 @@ const App: React.FC = () => {
     );
   }, [activeBubbleId]);
   
-    const handleUpdateFilters = useCallback((updates: Partial<BackgroundFilters>) => {
-        setBackgroundFilters(prev => ({ ...prev, ...updates }));
-    }, []);
+  const handleUpdateFilters = useCallback((updates: Partial<BackgroundFilters>) => {
+      setBackgroundFilters(prev => ({ ...prev, ...updates }));
+  }, []);
 
     const handleUpdateExportFrame = useCallback((updates: Partial<ExportFrame>) => {
       setExportFrame(prev => {
@@ -292,6 +239,33 @@ const App: React.FC = () => {
     nextId.current++;
   };
 
+  const handleAddConnectedBubble = () => {
+    const currentActiveBubble = bubbles.find(b => b.id === activeBubbleId);
+    if (!currentActiveBubble) return;
+
+    const targetGroupId = currentActiveBubble.groupId || currentActiveBubble.id;
+    const newBubbleId = nextId.current++;
+
+    const newBubble: BubbleProps = {
+      ...currentActiveBubble,
+      id: newBubbleId,
+      groupId: targetGroupId,
+      text: 'Connected speech...',
+      x: currentActiveBubble.x,
+      y: currentActiveBubble.y + currentActiveBubble.height * 0.65,
+      width: Math.round(currentActiveBubble.width * 0.9),
+      height: Math.round(currentActiveBubble.height * 0.85),
+      tails: [],
+      tailVisible: false,
+    };
+
+    setBubbles(prev => {
+      const updated = prev.map(b => b.id === activeBubbleId ? { ...b, groupId: targetGroupId } : b);
+      return [...updated, newBubble];
+    });
+    setActiveBubbleId(newBubbleId);
+  };
+
   const handleDeleteBubble = () => {
     if (bubbles.length <= 1) return;
 
@@ -336,6 +310,73 @@ const App: React.FC = () => {
     nextTailId.current = 2;
     handleClearBackground(); // This will reset view and dimensions
     setShowExportFrame(true);
+  };
+
+  const handleSaveProject = () => {
+    try {
+      const projectData = {
+        version: 1,
+        timestamp: new Date().toISOString(),
+        exportFilename,
+        canvasDimensions,
+        backgroundFilters,
+        exportFrame,
+        handleSize,
+        bubbles,
+      };
+      const jsonString = JSON.stringify(projectData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, `${exportFilename || 'comic-project'}.json`);
+    } catch (error) {
+      console.error("Failed to save project:", error);
+      alert("Error saving project file.");
+    }
+  };
+
+  const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const data = JSON.parse(content);
+        if (!data || !Array.isArray(data.bubbles) || data.bubbles.length === 0) {
+          throw new Error("Invalid project file: missing speech bubbles data.");
+        }
+        setBubbles(data.bubbles);
+        if (data.bubbles.length > 0) {
+          setActiveBubbleId(data.bubbles[0].id);
+          const maxBubbleId = Math.max(...data.bubbles.map((b: BubbleProps) => b.id || 1));
+          nextId.current = maxBubbleId + 1;
+          
+          let maxTailId = 1;
+          data.bubbles.forEach((b: BubbleProps) => {
+            if (Array.isArray(b.tails)) {
+              b.tails.forEach((t: TailProps) => {
+                if (t.id && t.id > maxTailId) maxTailId = t.id;
+              });
+            }
+          });
+          nextTailId.current = maxTailId + 1;
+        }
+        if (data.exportFilename) setExportFilename(data.exportFilename);
+        if (data.canvasDimensions) {
+          setCanvasDimensions(data.canvasDimensions);
+          setViewBox(`0 0 ${data.canvasDimensions.width} ${data.canvasDimensions.height}`);
+        }
+        if (data.backgroundFilters) setBackgroundFilters(data.backgroundFilters);
+        if (data.exportFrame) setExportFrame(data.exportFrame);
+        if (typeof data.handleSize === 'number') setHandleSize(data.handleSize);
+      } catch (err) {
+        console.error("Failed to load project:", err);
+        alert("Error loading project file. Please make sure it's a valid Babbling Book project JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   const handleFileSelect = useCallback((file: File) => {
@@ -494,46 +535,15 @@ const App: React.FC = () => {
         }
     });
 
-    const GOOGLE_FONTS = uniqueFonts.filter(f => !['Arial', 'Verdana'].includes(f));
-    const fontFamilies = GOOGLE_FONTS.map(f => `family=${f.replace(/ /g, '+')}:wght@400;700`).join('&');
-    const fontCssUrl = `https://fonts.googleapis.com/css2?${fontFamilies}&display=swap`;
-    
-    let finalCss = '';
-    
     try {
-        if(GOOGLE_FONTS.length > 0) {
-            const cssResponse = await fetch(fontCssUrl);
-            if (!cssResponse.ok) throw new Error(`CSS fetch failed: ${cssResponse.status}`);
-            let cssText = await cssResponse.text();
-
-            const fontUrlMatches = Array.from(cssText.matchAll(/url\((https?:\/\/[^)]+)\)/g));
-            const embeddedFontPromises = fontUrlMatches.map(async (match) => {
-                const url = match[1];
-                try {
-                    const fontFileResponse = await fetch(url);
-                    if (!fontFileResponse.ok) throw new Error(`Font file fetch failed`);
-                    const buffer = await fontFileResponse.arrayBuffer();
-                    const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-                    const mime = fontFileResponse.headers.get('content-type') || 'font/woff2';
-                    return { originalUrl: url, dataUri: `data:${mime};base64,${base64}` };
-                } catch {
-                    return { originalUrl: url, dataUri: null };
-                }
-            });
-
-            for (const { originalUrl, dataUri } of await Promise.all(await Promise.all(embeddedFontPromises))) {
-                if (dataUri) cssText = cssText.replace(originalUrl, dataUri);
-            }
-            finalCss = cssText;
-        }
-    } catch (error) {
-       console.error("Could not embed fonts, will proceed without them.", error);
-    }
-    
-    if (finalCss) {
+      const finalCss = await getExportEmbeddedFontCss(uniqueFonts);
+      if (finalCss) {
         const styleElement = document.createElementNS('http://www.w3.org/2000/svg', 'style');
         styleElement.textContent = finalCss;
         svgNode.querySelector('defs')?.prepend(styleElement);
+      }
+    } catch (error) {
+       console.error("Could not embed fonts for export:", error);
     }
 
     return new XMLSerializer().serializeToString(svgNode);
@@ -707,7 +717,131 @@ const App: React.FC = () => {
     const dataUrl = croppedCanvas.toDataURL(mimeType, format !== 'png' ? 0.9 : undefined);
     triggerDownload(dataUrl, `${exportFilename || 'comic-scene'}.${format}`);
   };
-  
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(prev => prev === msg ? null : prev);
+    }, 3000);
+  }, []);
+
+  const handleCopyCanvasToClipboard = useCallback(async () => {
+    try {
+      const hasBackground = backgroundImage || backgroundVideo;
+      let canvasToCopy: HTMLCanvasElement | null = null;
+
+      if (hasBackground && exportFrame) {
+        const fullCanvas = await getFullSceneAsCanvas();
+        if (!fullCanvas) return;
+        const croppedCanvas = document.createElement('canvas');
+        croppedCanvas.width = exportFrame.width;
+        croppedCanvas.height = exportFrame.height;
+        const ctxCropped = croppedCanvas.getContext('2d');
+        if (ctxCropped) {
+          ctxCropped.drawImage(
+            fullCanvas,
+            exportFrame.x, exportFrame.y, exportFrame.width, exportFrame.height,
+            0, 0, exportFrame.width, exportFrame.height
+          );
+          canvasToCopy = croppedCanvas;
+        }
+      } else {
+        canvasToCopy = await getFullSceneAsCanvas();
+      }
+
+      if (!canvasToCopy) return;
+
+      canvasToCopy.toBlob(async (blob) => {
+        if (!blob) return;
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          showToast('📋 Canvas copiato negli appunti!');
+        } catch (err) {
+          console.error('Failed to write image to clipboard:', err);
+          alert('Impossibile copiare l\'immagine negli appunti. Il tuo browser potrebbe richiedere i permessi per la clipboard.');
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error('Error copying canvas to clipboard:', error);
+    }
+  }, [backgroundImage, backgroundVideo, exportFrame, getFullSceneAsCanvas, showToast]);
+
+  const handleGlobalPaste = useCallback((e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            handleFileSelect(file);
+            showToast('🖼️ Immagine incollata come sfondo!');
+            return;
+          }
+        }
+      }
+    }
+
+    const activeEl = document.activeElement;
+    const isInputFocused = activeEl && (
+      activeEl.tagName === 'INPUT' ||
+      activeEl.tagName === 'TEXTAREA' ||
+      (activeEl as HTMLElement).isContentEditable
+    );
+
+    if (!isInputFocused) {
+      const pastedText = e.clipboardData?.getData('text/plain')?.trim();
+      if (pastedText && (pastedText.startsWith('data:image/') || /^https?:\/\/.*\.(png|jpg|jpeg|webp|gif)(\?.*)?$/i.test(pastedText))) {
+        e.preventDefault();
+        fetch(pastedText)
+          .then(res => res.blob())
+          .then(blob => {
+            const file = new File([blob], 'pasted-image.png', { type: blob.type || 'image/png' });
+            handleFileSelect(file);
+            showToast('🖼️ Immagine da URL incollata come sfondo!');
+          })
+          .catch(err => {
+            console.error("Failed to load pasted image URL:", err);
+          });
+      }
+    }
+  }, [handleFileSelect, showToast]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        (activeEl as HTMLElement).isContentEditable
+      );
+
+      const selection = window.getSelection();
+      const hasTextSelection = selection && selection.toString().length > 0;
+
+      // Intercept Ctrl+C / Cmd+C when NOT focused on an input and NOT selecting text
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        if (!isInputFocused && !hasTextSelection) {
+          e.preventDefault();
+          handleCopyCanvasToClipboard();
+        }
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('paste', handleGlobalPaste);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleGlobalPaste, handleCopyCanvasToClipboard]);
+
   const MIN_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MAX_ZOOM_PERCENT);
   const MAX_VIEWBOX_WIDTH = canvasDimensions.width * (100 / MIN_ZOOM_PERCENT);
 
@@ -760,6 +894,9 @@ const App: React.FC = () => {
                 bubbleProps={bubbleForPanel} 
                 onUpdate={handleUpdate}
                 nextTailId={nextTailId}
+                availableFonts={availableFonts}
+                allBubbles={bubbles}
+                onAddConnectedBubble={handleAddConnectedBubble}
             />
          ) : (
             <div className="p-6 text-stone-400 flex items-center justify-center h-full">
@@ -801,6 +938,15 @@ const App: React.FC = () => {
               <span className="hidden sm:inline">Reset</span>
             </button>
             
+            <button
+              onClick={handleCopyCanvasToClipboard}
+              className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-md transition-colors w-full sm:w-auto justify-center shadow"
+              title="Copy scene image to clipboard (Ctrl+C)"
+            >
+              <CopyIcon className="w-5 h-5" />
+              <span className="hidden sm:inline">Copy (Ctrl+C)</span>
+            </button>
+
             <button
                 onClick={handleExportBubblesPNG}
                 className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors w-full sm:w-auto justify-center"
@@ -923,12 +1069,20 @@ const App: React.FC = () => {
                 canvasDimensions={canvasDimensions}
                 handleSize={handleSize}
                 onUpdateHandleSize={setHandleSize}
+                onSaveProject={handleSaveProject}
+                onLoadProject={handleLoadProject}
             />
          </div>
          <div className="flex-shrink-0">
             <InfoPanel />
          </div>
       </aside>
+
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 bg-stone-900 border border-stone-700 text-white px-5 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 flex items-center space-x-2 animate-bounce">
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };
